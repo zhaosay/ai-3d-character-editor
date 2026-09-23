@@ -1,14 +1,9 @@
 import { useViewportStore } from '../../stores/viewportStore';
 import { useCharacterStore } from '../../stores/characterStore';
 
+/** 信息条：FPS + 角色信息。显示开关已收拢到右侧主题面板。 */
 export function ViewportHUD() {
   const fps = useViewportStore((s) => s.fps);
-  const showSkeleton = useViewportStore((s) => s.showSkeleton);
-  const showGrid = useViewportStore((s) => s.showGrid);
-  const shadows = useViewportStore((s) => s.shadows);
-  const toggleSkeleton = useViewportStore((s) => s.toggleSkeleton);
-  const toggleGrid = useViewportStore((s) => s.toggleGrid);
-  const toggleShadows = useViewportStore((s) => s.toggleShadows);
   const meta = useCharacterStore((s) => s.meta);
 
   return (
@@ -20,22 +15,7 @@ export function ViewportHUD() {
           {meta.gltfInfo.bones === 0 && <span className="text-amber-400">（无骨骼，仅预览）</span>}
         </span>
       )}
-      <div className="ml-auto flex gap-1">
-        <Toggle label="骨骼" on={showSkeleton} onClick={toggleSkeleton} />
-        <Toggle label="网格" on={showGrid} onClick={toggleGrid} />
-        <Toggle label="阴影" on={shadows} onClick={toggleShadows} />
-      </div>
+      <span className="ml-auto text-[11px] text-zinc-400">显示设置 → 右侧主题</span>
     </div>
-  );
-}
-
-function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded px-2 py-0.5 ${on ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-600'}`}
-    >
-      {label}
-    </button>
   );
 }

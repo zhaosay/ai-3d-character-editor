@@ -21,6 +21,10 @@ function CharacterPrimitive() {
 export function ViewportCanvas() {
   const showGrid = useViewportStore((s) => s.showGrid);
   const shadows = useViewportStore((s) => s.shadows);
+  const gridSize = useViewportStore((s) => s.gridSize);
+  const gridCell = useViewportStore((s) => s.gridCell);
+  const gridSection = useViewportStore((s) => s.gridSection);
+  const shadowOpacity = useViewportStore((s) => s.shadowOpacity);
   const sceneObject = useCharacterStore((s) => s.sceneObject);
 
   return (
@@ -41,15 +45,15 @@ export function ViewportCanvas() {
         {/* 地面 */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
           <planeGeometry args={[30, 30]} />
-          <shadowMaterial opacity={0.35} />
+          <shadowMaterial opacity={shadowOpacity} />
         </mesh>
         {showGrid && (
           <Grid
             position={[0, 0.001, 0]}
-            args={[30, 30]}
-            cellColor="#d9dfe7"
-            sectionColor="#a9b4c2"
-            fadeDistance={25}
+            args={[gridSize, gridSize]}
+            cellColor={gridCell}
+            sectionColor={gridSection}
+            fadeDistance={gridSize * 0.8}
             infiniteGrid
           />
         )}

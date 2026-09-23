@@ -5,6 +5,7 @@ import { useIKStore } from '../../stores/ikStore';
 import { useSelectionStore } from '../../stores/selectionStore';
 import { useSkeletonStore } from '../../stores/skeletonStore';
 import { captureBoneLocal, indexBonesByName } from '../../core/animation/applyPose';
+import { solvePinsLive } from '../../core/ik/applyPoseWithIK';
 import type { IKChainId } from '../../core/ik/types';
 import { MockMotionProvider } from '../motion/MockMotionProvider';
 import { MathInbetweenProvider } from '../inbetween/MathInbetweenProvider';
@@ -238,7 +239,34 @@ async function applyIk(args: Record<string, unknown>): Promise<ToolResult> {
   const pole = optVec3(args, 'polePoint');
   if (pole) st.setPolePoint(id, pole);
   const cur = useIKStore.getState().chains[id]!;
-  return { ok: true, data: { chain, enabled: cur.enabled, target: cur.target } };
+  // 同步求解（自检）：不等下一帧，立即把骨骼拉到目标，避免后续 keyframe 抓到旧姿势导致闪烁
+  let solve: { reached: boolean; hingeDeg: number; clamped: boolean } | null = null;
+  if (cur.enabled) {
+    const scene = useCharacterStore.getState().sceneObject;
+    if (scene) {
+      try {
+        const solved = solvePinsLive(scene, [{ def: cur.def, target: [...cur.target], polePoint: [...cur.polePoint] }]);
+        const s = solved[0];
+        if (s) {
+          solve = { reached: s.reached, hingeDeg: s.hingeDeg, clamped: s.clamped };
+          st.setLastSolve(id, { reached: s.reached, hingeDeg: s.hingeDeg, clamped: s.clamped });
+        }
+      } catch (e) {
+        return err('IK_FAILED', e instanceof Error ? e.message : 'IK 求解失败');
+      }
+    }
+  }
+  return {
+    ok: true,
+    data: {
+      chain,
+      enabled: cur.enabled,
+      target: cur.target,
+      reached: solve?.reached ?? null,
+      hingeDeg: solve ? Math.round(solve.hingeDeg * 10) / 10 : null,
+      clamped: solve?.clamped ?? false,
+    },
+  };
 }
 
 async function applyInbetween(args: Record<string, unknown>): Promise<ToolResult> {

@@ -43,6 +43,7 @@ export function HighlightSync({ sceneObject }: { sceneObject: THREE.Group | null
 
 export function SkeletonOverlay({ sceneObject }: { sceneObject: THREE.Group | null }) {
   const showSkeleton = useViewportStore((s) => s.showSkeleton);
+  const skeletonColor = useViewportStore((s) => s.skeletonColor);
   const scene = useThree((s) => s.scene);
   const helper = useMemo(() => {
     if (!sceneObject) return null;
@@ -71,6 +72,13 @@ export function SkeletonOverlay({ sceneObject }: { sceneObject: THREE.Group | nu
   useEffect(() => {
     if (helper) helper.visible = showSkeleton;
   }, [helper, showSkeleton]);
+
+  useEffect(() => {
+    if (helper) {
+      const mat = helper.material as THREE.LineBasicMaterial;
+      if (mat && 'color' in mat) mat.color.set(skeletonColor);
+    }
+  }, [helper, skeletonColor]);
 
   return null;
 }

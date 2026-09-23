@@ -2,8 +2,10 @@ import { useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useAnimationStore } from '../../stores/animationStore';
 import { useCharacterStore } from '../../stores/characterStore';
+import { useIKStore } from '../../stores/ikStore';
 import { sampleAnimation } from '../../core/animation/sampler';
 import { applySampledPose } from '../../core/animation/applyPose';
+import { applyPoseWithIK, type IKPin } from '../../core/ik/applyPoseWithIK';
 
 /** Canvas 内：播放时推进时间并应用 pose。时间写入 store，Timeline/Inspector 跟随。 */
 export function PlaybackEngine() {
@@ -58,7 +60,13 @@ export function ScrubApplier() {
     if (!active || active.tracks.length === 0) return;
     try {
       const pose = sampleAnimation(active, currentTime);
-      if (pose.size > 0) applySampledPose(sceneObject, pose);
+      if (pose.size === 0) return;
+      // 启用的 IK 链跟随求解，避免 FK 覆盖造成闪一帧
+      const pins: IKPin[] = [];
+      for (const c of Object.values(useIKStore.getState().chains)) {
+        if (c?.enabled) pins.push({ def: c.def, target: [...c.target], polePoint: [...c.polePoint] });
+      }
+      applyPoseWithIK(sceneObject, pose, pins);
     } catch (e) {
       console.error(e);
     }

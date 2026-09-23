@@ -84,6 +84,8 @@ interface PartSpec {
   geo: THREE.BufferGeometry;
   bone: string;
   mat: THREE.Material;
+  /** 主题分组：体表(skin) / 服饰发饰(skin 以外) */
+  theme: 'skin' | 'cloth';
 }
 
 function box(w: number, h: number, d: number, x: number, y: number, z: number): THREE.BufferGeometry {
@@ -117,11 +119,11 @@ function armParts(P: GenderParams, side: 1 | -1): PartSpec[] {
   const fo = side > 0 ? 'Forearm_L' : 'Forearm_R';
   const hand = side > 0 ? 'Hand_L' : 'Hand_R';
   return [
-    { geo: sphere(P.deltR, sx, 1.5, 0), bone: up, mat: P.body }, // 三角肌
-    { geo: capsule(P.armR, 0.22, sx, 1.35, 0), bone: up, mat: P.body },
-    { geo: sphere(P.elbowR, sx, 1.2, 0), bone: fo, mat: P.body }, // 肘
-    { geo: capsule(P.forearmR, 0.2, sx, 1.06, 0), bone: fo, mat: P.body },
-    { geo: box(0.07, 0.15, 0.075, sx, 0.845, 0), bone: hand, mat: DARK },
+    { geo: sphere(P.deltR, sx, 1.5, 0), bone: up, mat: P.body, theme: 'skin' }, // 三角肌
+    { geo: capsule(P.armR, 0.22, sx, 1.35, 0), bone: up, mat: P.body, theme: 'skin' },
+    { geo: sphere(P.elbowR, sx, 1.2, 0), bone: fo, mat: P.body, theme: 'skin' }, // 肘
+    { geo: capsule(P.forearmR, 0.2, sx, 1.06, 0), bone: fo, mat: P.body, theme: 'skin' },
+    { geo: box(0.07, 0.15, 0.075, sx, 0.845, 0), bone: hand, mat: DARK, theme: 'cloth' },
   ];
 }
 
@@ -131,35 +133,34 @@ function legParts(P: GenderParams, side: 1 | -1): PartSpec[] {
   const sh = side > 0 ? 'Shin_L' : 'Shin_R';
   const foot = side > 0 ? 'Foot_L' : 'Foot_R';
   return [
-    { geo: capsule(P.thighR, 0.34, sx, 0.72, 0), bone: th, mat: DARK },
-    { geo: sphere(P.kneeR, sx, 0.48, 0), bone: sh, mat: P.body }, // 膝
-    { geo: capsule(P.shinR, 0.32, sx, 0.25, 0), bone: sh, mat: P.body },
-    { geo: box(0.095, 0.07, 0.25, sx, 0.035, 0.085), bone: foot, mat: DARK },
+    { geo: capsule(P.thighR, 0.32, sx, 0.67, 0), bone: th, mat: DARK, theme: 'cloth' },
+    { geo: capsule(P.shinR, 0.3, sx, 0.24, 0), bone: sh, mat: P.body, theme: 'skin' },
+    { geo: box(0.11, 0.07, 0.26, sx, 0.035, 0.1), bone: foot, mat: DARK, theme: 'cloth' },
   ];
 }
 
 /** 躯干 + 性别特征：男束发 / 女长发+发髻+胸型 */
 function torsoParts(P: GenderParams, gender: DemoGender): PartSpec[] {
   const parts: PartSpec[] = [
-    { geo: cylinder(P.pelvisTop, P.pelvisBottom, 0.18, 0, 1.02, 0), bone: 'Hips', mat: P.body },
-    { geo: box(P.pelvisTop * 2 + 0.02, 0.05, 0.22, 0, 1.09, 0), bone: 'Hips', mat: P.accent }, // 腰带
-    { geo: cylinder(P.waistTop, P.waistBottom, 0.24, 0, 1.21, 0), bone: 'Spine', mat: P.body },
-    { geo: cylinder(P.chestTop, P.chestBottom, 0.28, 0, 1.37, 0), bone: 'Chest', mat: P.body },
-    { geo: cylinder(0.05, 0.058, 0.12, 0, 1.53, 0), bone: 'Neck', mat: P.body },
-    { geo: sphere(0.115, 0, 1.7, 0.01, 0.92, 1.08, 0.95), bone: 'Head', mat: P.body },
-    { geo: box(0.03, 0.05, 0.035, 0, 1.685, 0.115), bone: 'Head', mat: P.body }, // 鼻
-    { geo: box(0.21, 0.055, 0.21, 0, 1.75, 0.005), bone: 'Head', mat: P.accent }, // 抹额
+    { geo: cylinder(P.pelvisTop, P.pelvisBottom, 0.18, 0, 1.02, 0), bone: 'Hips', mat: P.body, theme: 'skin' },
+    { geo: box(P.pelvisTop * 2 + 0.02, 0.05, 0.22, 0, 1.09, 0), bone: 'Hips', mat: P.accent, theme: 'cloth' }, // 腰带
+    { geo: cylinder(P.waistTop, P.waistBottom, 0.24, 0, 1.21, 0), bone: 'Spine', mat: P.body, theme: 'skin' },
+    { geo: cylinder(P.chestTop, P.chestBottom, 0.28, 0, 1.37, 0), bone: 'Chest', mat: P.body, theme: 'skin' },
+    { geo: cylinder(0.05, 0.058, 0.12, 0, 1.53, 0), bone: 'Neck', mat: P.body, theme: 'skin' },
+    { geo: sphere(0.115, 0, 1.7, 0.01, 0.92, 1.08, 0.95), bone: 'Head', mat: P.body, theme: 'skin' },
+    { geo: box(0.03, 0.05, 0.035, 0, 1.685, 0.115), bone: 'Head', mat: P.body, theme: 'skin' }, // 鼻
+    { geo: box(0.21, 0.055, 0.21, 0, 1.75, 0.005), bone: 'Head', mat: P.accent, theme: 'cloth' }, // 抹额
   ];
   if (gender === 'female') {
     parts.push(
-      { geo: sphere(0.068, 0.075, 1.4, 0.105), bone: 'Chest', mat: P.body }, // 胸型
-      { geo: sphere(0.068, -0.075, 1.4, 0.105), bone: 'Chest', mat: P.body },
-      { geo: box(0.17, 0.42, 0.07, 0, 1.52, -0.125), bone: 'Head', mat: DARK }, // 长发
-      { geo: sphere(0.06, 0, 1.8, -0.085), bone: 'Head', mat: DARK }, // 发髻
+      { geo: sphere(0.068, 0.075, 1.4, 0.105), bone: 'Chest', mat: P.body, theme: 'skin' }, // 胸型
+      { geo: sphere(0.068, -0.075, 1.4, 0.105), bone: 'Chest', mat: P.body, theme: 'skin' },
+      { geo: box(0.17, 0.42, 0.07, 0, 1.52, -0.125), bone: 'Head', mat: DARK, theme: 'cloth' }, // 长发
+      { geo: sphere(0.06, 0, 1.8, -0.085), bone: 'Head', mat: DARK, theme: 'cloth' }, // 发髻
     );
   } else {
     parts.push(
-      { geo: box(0.19, 0.05, 0.2, 0, 1.815, 0.005), bone: 'Head', mat: DARK }, // 束发
+      { geo: box(0.19, 0.05, 0.2, 0, 1.815, 0.005), bone: 'Head', mat: DARK, theme: 'cloth' }, // 束发
     );
   }
   return parts;
@@ -198,6 +199,17 @@ export function buildDemoCharacter(gender: DemoGender = 'male'): DemoCharacter {
   const indexOf = new Map(ordered.map((b, i) => [b.name, i]));
   const skeleton = new THREE.Skeleton(ordered);
 
+  // 材质按角色实例克隆（换肤不污染模板，dispose 时一并释放）
+  const matClones = new Map<THREE.Material, THREE.Material>();
+  const cloneOf = (m: THREE.Material) => {
+    let c = matClones.get(m);
+    if (!c) {
+      c = m.clone();
+      matClones.set(m, c);
+    }
+    return c;
+  };
+
   const geometries: THREE.BufferGeometry[] = [];
   for (const part of PARTS) {
     const geo = part.geo;
@@ -212,14 +224,16 @@ export function buildDemoCharacter(gender: DemoGender = 'male'): DemoCharacter {
     }
     geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
     geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
-    const mesh = new THREE.SkinnedMesh(geo, part.mat);
+    const mesh = new THREE.SkinnedMesh(geo, cloneOf(part.mat));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData['themePart'] = part.theme;
     mesh.bind(skeleton);
     mesh.normalizeSkinWeights();
     scene.add(mesh);
   }
   scene.updateMatrixWorld(true);
+  scene.userData['themable'] = true;
 
   const meta: CharacterMeta = {
     id: `demo-${gender}-${Date.now()}`,
@@ -229,10 +243,16 @@ export function buildDemoCharacter(gender: DemoGender = 'male'): DemoCharacter {
   };
 
   const dispose = () => {
+    const mats = new Set<THREE.Material>();
     scene.traverse((o) => {
       const mesh = o as THREE.SkinnedMesh;
-      if (mesh.isSkinnedMesh) mesh.geometry.dispose();
+      if (mesh.isSkinnedMesh) {
+        mesh.geometry.dispose();
+        const mm = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mm.forEach((m) => mats.add(m as THREE.Material));
+      }
     });
+    mats.forEach((m) => m.dispose());
   };
 
   return { scene, meta, dispose };

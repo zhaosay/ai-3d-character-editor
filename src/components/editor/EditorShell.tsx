@@ -5,6 +5,7 @@ import { ViewportCanvas } from '../viewport/ViewportCanvas';
 import { ViewportHUD } from '../viewport/ViewportHUD';
 import { ScrubApplier } from '../viewport/PlaybackEngine';
 import { BoneDetails } from '../inspector/BoneDetails';
+import { ThemePanel } from '../inspector/ThemePanel';
 import { TransformPanel } from '../inspector/TransformPanel';
 import { IKPanel } from '../inspector/IKPanel';
 import { AutoPosePanel } from '../inspector/AutoPosePanel';
@@ -189,6 +190,7 @@ export function EditorShell() {
         <aside className="flex w-72 shrink-0 flex-col border-l border-zinc-200 bg-white">
           <div className="border-b border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-600">Inspector</div>
           <div className="min-h-0 flex-1 overflow-auto">
+            <ThemePanel />
             <TransformPanel />
             <IKPanel />
             <AutoPosePanel />

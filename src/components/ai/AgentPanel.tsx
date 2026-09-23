@@ -242,6 +242,10 @@ export function AgentPanel() {
               {e.results.map((r, i) => (
                 <span key={i} className={r.ok ? 'text-emerald-600' : 'text-red-500'}>
                   {' '}{r.ok ? '✓' : `✗${r.error ? `:${r.error.code}` : ''}`}{e.actions[i]?.tool ?? ''}
+                  {r.ok && e.actions[i]?.tool === 'apply_ik' && (r.data as { clamped?: boolean })?.clamped
+                    ? '（目标不可达，已钳制）' : ''}
+                  {r.ok && e.actions[i]?.tool === 'check_physics'
+                    ? `：${((r.data as { issues?: unknown[] })?.issues ?? []).length} 个问题` : ''}
                 </span>
               ))}
             </div>

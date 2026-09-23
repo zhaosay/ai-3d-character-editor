@@ -21,7 +21,7 @@ backend/.venv/bin/uvicorn main:app --app-dir backend --port 8123
 
 验证：`npm run test`（前端 vitest）、`backend/.venv/bin/python backend/test_api.py`（后端）、`npm run build`。
 
-角色来源：左侧点 **示例男角色 / 示例女角色** 即开即用（程序化武侠人物：17 骨骼全语义映射，男宽肩束发、女长发髻，修长四肢，导出拖回骨骼保留）；
+角色来源：左侧点 **示例男角色 / 示例女角色** 即开即用（程序化武侠人物：17 骨骼全语义映射，男宽肩束发、女长发髻，修长四肢，右侧主题面板可换肤色/服装/骨骼/网格/阴影，导出拖回骨骼保留）；
 或拖入外部 GLB（公开模型见 `public/samples/README.md`）。
 
 操作：顶部 🤖 AI 命令条直接对话改动作（一键快捷指令）；`空格`=播放/暂停，`Ctrl+Z`=撤销，`Ctrl+Y`=重做。

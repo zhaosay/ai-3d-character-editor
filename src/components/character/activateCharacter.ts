@@ -5,8 +5,10 @@ import { useHistoryStore } from '../../stores/historyStore';
 import { useIKStore } from '../../stores/ikStore';
 import { useSelectionStore } from '../../stores/selectionStore';
 import { useSkeletonStore } from '../../stores/skeletonStore';
+import { useThemeStore } from '../../stores/themeStore';
 import { detectIKChains } from '../../core/ik/chains';
 import { buildSkeletonTree } from '../../core/skeleton/buildSkeletonTree';
+import { readTheme } from '../../core/theme/theme';
 import type { CharacterMeta } from '../../types/global';
 
 let prevDispose: (() => void) | null = null;
@@ -21,6 +23,8 @@ export function activateCharacter(meta: CharacterMeta, scene: THREE.Group, dispo
   useSelectionStore.getState().select(null);
   useHistoryStore.getState().clear();
   useIKStore.getState().initChains(detectIKChains(snap));
+  const theme = readTheme(scene);
+  if (theme) useThemeStore.getState().init(theme.skin, theme.cloth);
   const anims = useAnimationStore.getState();
   if (anims.animations.length === 0) anims.createAnimation('Take 1');
   else anims.setTime(0);
