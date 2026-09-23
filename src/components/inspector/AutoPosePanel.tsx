@@ -98,8 +98,8 @@ export function AutoPosePanel() {
   };
 
   return (
-    <div className="space-y-2 border-b border-zinc-800 p-3 text-xs">
-      <div className="flex items-center gap-2 font-bold text-zinc-300">
+    <div className="space-y-2 border-b border-zinc-200 p-3 text-xs">
+      <div className="flex items-center gap-2 font-bold text-zinc-700">
         AutoPosing <ProviderBadge source="real" label="P8 重心+保脚" />
       </div>
       {!snapshot && <div className="text-zinc-500">先加载角色</div>}
@@ -111,18 +111,18 @@ export function AutoPosePanel() {
         disabled={!usable} onChange={(v) => onParam({ leanXDeg: v })} />
       <Slider label="躯干侧倾" min={-15} max={15} step={1} unit="°" value={params.leanZDeg}
         disabled={!usable} onChange={(v) => onParam({ leanZDeg: v })} />
-      <label className="flex items-center gap-2 text-zinc-400">
+      <label className="flex items-center gap-2 text-zinc-600">
         <input type="checkbox" checked={params.pinFeet} disabled={!usable}
           onChange={(e) => onParam({ pinFeet: e.target.checked })} />
         固定双脚（下压时膝盖自动弯曲）
       </label>
-      <label className="flex items-center gap-2 text-zinc-400">
+      <label className="flex items-center gap-2 text-zinc-600">
         <input type="checkbox" checked={params.pinHands} disabled={!usable}
           onChange={(e) => onParam({ pinHands: e.target.checked })} />
         固定双手
       </label>
       {lastResult && (
-        <div className="rounded bg-zinc-900 p-2 text-[11px] text-zinc-400">
+        <div className="rounded bg-zinc-100 p-2 text-[11px] text-zinc-600">
           <div>已调整 {lastResult.adjusted} 块骨骼</div>
           {lastResult.warnings.map((w, i) => (
             <div key={i} className="text-amber-400">⚠ {w}</div>
@@ -131,12 +131,12 @@ export function AutoPosePanel() {
       )}
       <div className="flex gap-1">
         <button onClick={onReset} disabled={!usable && !entryRef.current}
-          className="flex-1 rounded bg-zinc-800 px-2 py-1 disabled:text-zinc-600">
+          className="flex-1 rounded bg-zinc-200 px-2 py-1 disabled:text-zinc-600">
           重置
         </button>
         <button onClick={onBake} disabled={!usable || !active}
           title={!active ? '先创建动画' : '把当前全身姿势写入关键帧'}
-          className="flex-1 rounded bg-emerald-600 px-2 py-1 text-white disabled:bg-zinc-800 disabled:text-zinc-500">
+          className="flex-1 rounded bg-emerald-600 px-2 py-1 text-white disabled:bg-zinc-200 disabled:text-zinc-500">
           ◆ 全身打关键帧
         </button>
       </div>
@@ -152,10 +152,10 @@ function Slider({
   value: number; disabled?: boolean; onChange: (v: number) => void;
 }) {
   return (
-    <label className="block text-zinc-400">
+    <label className="block text-zinc-600">
       <div className="flex justify-between">
         <span>{label}</span>
-        <span className="font-mono text-zinc-200">{value.toFixed(2)}{unit}</span>
+        <span className="font-mono text-zinc-800">{value.toFixed(2)}{unit}</span>
       </div>
       <input
         type="range" min={min} max={max} step={step} value={value} disabled={disabled}

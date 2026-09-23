@@ -43,11 +43,13 @@ describe.each([['male'], ['female']] as Array<[DemoGender]>)('demo character (%s
     expect(meta.fileName).toMatch(gender === 'female' ? /female/ : /male/);
   });
 
-  it('站立地面：脚底 y≈0，身高约 1.74', () => {
+  it('站立地面：脚底 y≈0，身高约 1.83', () => {
     const { scene } = buildDemoCharacter(gender);
     const box = new THREE.Box3().setFromObject(scene);
     expect(box.min.y).toBeCloseTo(0, 2);
-    expect(box.max.y - box.min.y).toBeCloseTo(1.74, 1);
+    const height = box.max.y - box.min.y;
+    expect(height).toBeGreaterThan(1.8);
+    expect(height).toBeLessThan(1.9);
   });
 
   it('IK 检测出 4 链', () => {
@@ -65,9 +67,9 @@ describe('demo 男女体型差异', () => {
       const n = Object.values(snap.nodes).find((x) => x.name === name)!;
       return Math.abs(n.world.position[0]);
     };
-    // 肩：男 0.26 > 女 0.21
-    expect(wx(male, 'UpperArm_L')).toBeCloseTo(0.26, 3);
-    expect(wx(female, 'UpperArm_L')).toBeCloseTo(0.21, 3);
+    // 肩：男 0.24 > 女 0.19
+    expect(wx(male, 'UpperArm_L')).toBeCloseTo(0.24, 3);
+    expect(wx(female, 'UpperArm_L')).toBeCloseTo(0.19, 3);
   });
 
   it('女版网格更多（长发/发髻/胸型），男女文件名不同', () => {

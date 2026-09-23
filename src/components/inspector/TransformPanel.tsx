@@ -68,10 +68,10 @@ export function TransformPanel() {
   const keys = active?.tracks.find((t) => t.boneName === boneName)?.rotation.length ?? 0;
 
   return (
-    <div className="space-y-2 border-b border-zinc-800 p-3 text-xs">
-      <div className="font-bold text-zinc-300">Pose Editing · Rotation {playing && <span className="text-amber-400">（播放中锁定）</span>}</div>
+    <div className="space-y-2 border-b border-zinc-200 p-3 text-xs">
+      <div className="font-bold text-zinc-700">Pose Editing · Rotation {playing && <span className="text-amber-400">（播放中锁定）</span>}</div>
       {(['x', 'y', 'z'] as const).map((ax) => (
-        <label key={ax} className="flex items-center gap-2 text-zinc-400">
+        <label key={ax} className="flex items-center gap-2 text-zinc-600">
           <span className="w-6 uppercase">{ax}</span>
           <input
             type="number"
@@ -79,17 +79,17 @@ export function TransformPanel() {
             value={Number(euler[ax].toFixed(1))}
             disabled={playing}
             onChange={(e) => setAxis(ax, Number(e.target.value))}
-            className="w-full rounded bg-zinc-900 px-2 py-1 font-mono text-zinc-200 outline-none ring-1 ring-zinc-800 disabled:opacity-50"
+            className="w-full rounded bg-zinc-100 px-2 py-1 font-mono text-zinc-800 outline-none ring-1 ring-zinc-300 disabled:opacity-50"
           />
           <span>°</span>
         </label>
       ))}
       <div className="flex items-center gap-2">
-        <select value={interp} onChange={(e) => setInterp(e.target.value as 'linear' | 'step')} className="rounded bg-zinc-900 px-1 py-1 outline-none ring-1 ring-zinc-800">
+        <select value={interp} onChange={(e) => setInterp(e.target.value as 'linear' | 'step')} className="rounded bg-zinc-100 px-1 py-1 outline-none ring-1 ring-zinc-300">
           <option value="linear">linear</option>
           <option value="step">step</option>
         </select>
-        <button onClick={addKey} disabled={playing} className="flex-1 rounded bg-emerald-600 px-2 py-1 text-white disabled:bg-zinc-800 disabled:text-zinc-500">
+        <button onClick={addKey} disabled={playing} className="flex-1 rounded bg-emerald-600 px-2 py-1 text-white disabled:bg-zinc-200 disabled:text-zinc-500">
           ◆ 打关键帧 ({keys})
         </button>
       </div>

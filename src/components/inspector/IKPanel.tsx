@@ -12,8 +12,8 @@ export function IKPanel() {
   const chains = useIKStore((s) => s.chains);
   const detected = ORDER.filter((id) => chains[id]);
   return (
-    <div className="space-y-2 border-b border-zinc-800 p-3 text-xs">
-      <div className="flex items-center gap-2 font-bold text-zinc-300">
+    <div className="space-y-2 border-b border-zinc-200 p-3 text-xs">
+      <div className="flex items-center gap-2 font-bold text-zinc-700">
         IK <ProviderBadge source="real" label="P3 双骨+Pole" />
       </div>
       {detected.length === 0 && (
@@ -47,13 +47,13 @@ function ChainRow({ id }: { id: IKChainId }) {
   };
 
   return (
-    <div className={`rounded p-2 ring-1 ${c.enabled ? 'bg-zinc-900 ring-emerald-700' : 'bg-zinc-900/40 ring-zinc-800'}`}>
+    <div className={`rounded p-2 ring-1 ${c.enabled ? 'bg-zinc-100 ring-emerald-700' : 'bg-zinc-100/70 ring-zinc-300'}`}>
       <div className="flex items-center gap-2">
         <input type="checkbox" checked={c.enabled} onChange={() => toggleChain(id)} />
-        <span className="font-bold text-zinc-200">
+        <span className="font-bold text-zinc-800">
           {c.def.label} <span className="font-mono text-[10px] text-zinc-500">{id}</span>
         </span>
-        <button onClick={() => resetChain(id)} className="ml-auto rounded bg-zinc-800 px-1.5 py-0.5 text-[11px]">
+        <button onClick={() => resetChain(id)} className="ml-auto rounded bg-zinc-200 px-1.5 py-0.5 text-[11px]">
           重置
         </button>
       </div>
@@ -65,12 +65,12 @@ function ChainRow({ id }: { id: IKChainId }) {
           <VecInput label="目标" value={c.target} onChange={(v) => setTarget(id, v)} />
           <VecInput label="极向量" value={c.polePoint} onChange={(v) => setPolePoint(id, v)} />
           {c.lastSolve && (
-            <div className="font-mono text-[10px] text-zinc-400">
+            <div className="font-mono text-[10px] text-zinc-600">
               肘/膝角 {c.lastSolve.hingeDeg.toFixed(1)}°
               {!c.lastSolve.reached && <span className="text-amber-400"> · 超出可达，已钳制</span>}
             </div>
           )}
-          <button onClick={bake} disabled={!active} className="w-full rounded bg-emerald-600 px-2 py-1 text-white disabled:bg-zinc-800 disabled:text-zinc-500">
+          <button onClick={bake} disabled={!active} className="w-full rounded bg-emerald-600 px-2 py-1 text-white disabled:bg-zinc-200 disabled:text-zinc-500">
             ◆ 整链打关键帧 @ {currentTime.toFixed(2)}s
           </button>
         </div>
@@ -81,7 +81,7 @@ function ChainRow({ id }: { id: IKChainId }) {
 
 function VecInput({ label, value, onChange }: { label: string; value: Vec3Tuple; onChange: (v: Vec3Tuple) => void }) {
   return (
-    <label className="flex items-center gap-1 text-zinc-400">
+    <label className="flex items-center gap-1 text-zinc-600">
       <span className="w-10">{label}</span>
       {([0, 1, 2] as const).map((i) => (
         <input
@@ -94,7 +94,7 @@ function VecInput({ label, value, onChange }: { label: string; value: Vec3Tuple;
             v[i] = Number(e.target.value);
             onChange(v);
           }}
-          className="w-full rounded bg-zinc-950 px-1 py-0.5 font-mono text-zinc-200 outline-none ring-1 ring-zinc-800"
+          className="w-full rounded bg-white px-1 py-0.5 font-mono text-zinc-800 outline-none ring-1 ring-zinc-300"
         />
       ))}
     </label>

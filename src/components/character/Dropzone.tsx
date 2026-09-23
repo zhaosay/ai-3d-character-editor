@@ -53,7 +53,7 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
         if (f) void handleFile(f);
       }}
       className={`${compact ? 'p-2' : 'p-6'} rounded border border-dashed text-center cursor-pointer transition-colors ${
-        dragOver ? 'border-emerald-400 bg-emerald-400/10' : 'border-zinc-700 bg-zinc-900/50'
+        dragOver ? 'border-emerald-400 bg-emerald-400/10' : 'border-zinc-300 bg-zinc-100/70'
       }`}
     >
       <input
@@ -67,7 +67,7 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
           e.target.value = '';
         }}
       />
-      <label htmlFor="char-upload" className="cursor-pointer text-sm text-zinc-300">
+      <label htmlFor="char-upload" className="cursor-pointer text-sm text-zinc-700">
         {loading ? '加载中…' : '拖拽 .glb / .gltf 到此，或点击选择'}
       </label>
       <div className="mt-2 flex gap-1">

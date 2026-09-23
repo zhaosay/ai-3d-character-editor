@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dropzone } from '../character/Dropzone';
 import { SkeletonTree } from '../skeleton/SkeletonTree';
 import { ViewportCanvas } from '../viewport/ViewportCanvas';
@@ -108,10 +108,10 @@ function ToolbarActions() {
     }
   };
 
-  const btn = 'rounded bg-zinc-800 px-2 py-1 hover:bg-zinc-700 disabled:opacity-50';
+  const btn = 'rounded bg-zinc-200 px-2 py-1 hover:bg-zinc-200 disabled:opacity-50';
   return (
     <div className="ml-auto flex min-w-0 items-center gap-1 text-xs">
-      {msg && <span className="mr-1 max-w-72 truncate text-zinc-400" title={msg}>{msg}</span>}
+      {msg && <span className="mr-1 max-w-72 truncate text-zinc-600" title={msg}>{msg}</span>}
       <button onClick={doNew} className={btn}>New</button>
       <button onClick={() => openRef.current?.click()} disabled={busy} className={btn}>Open</button>
       <input ref={openRef} type="file" accept=".json,application/json" className="hidden" onChange={(e) => {
@@ -128,24 +128,49 @@ function ToolbarActions() {
 }
 
 export function EditorShell() {
+  // 全局快捷键：空格=播放/暂停，Ctrl+Z=撤销，Ctrl+Y/Ctrl+Shift+Z=重做（输入框内不触发）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
+      const anim = useAnimationStore.getState();
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (anim.active()) anim.setPlaying(!anim.playing);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) anim.redo();
+        else anim.undo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        anim.redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
-    <div className="flex h-full flex-col bg-[#0b0d12] text-zinc-200">
+    <div className="flex h-full flex-col bg-white text-zinc-800">
       <ScrubApplier />
       {/* Toolbar */}
-      <header className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-950 px-3 py-2">
-        <span className="text-sm font-bold text-white">AI 3D Character Animation Editor</span>
+      <header className="flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-2">
+        <span className="text-sm font-bold text-zinc-900">AI 3D Character Animation Editor</span>
         <ProviderBadge source="real" label="P10 Agent" />
         <ToolbarActions />
       </header>
 
+      {/* AI 命令条（顶部） */}
+      <AgentPanel />
+
       {/* Main */}
       <div className="flex min-h-0 flex-1">
         {/* Left */}
-        <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
-          <div className="border-b border-zinc-800 p-2">
+        <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-200 bg-white">
+          <div className="border-b border-zinc-200 p-2">
             <Dropzone compact />
           </div>
-          <div className="border-b border-zinc-800 px-3 py-1.5 text-xs font-bold text-zinc-400">Skeleton Explorer</div>
+          <div className="border-b border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-600">Skeleton Explorer</div>
           <div className="min-h-0 flex-1">
             <SkeletonTree />
           </div>
@@ -161,8 +186,8 @@ export function EditorShell() {
         </main>
 
         {/* Right */}
-        <aside className="flex w-72 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950">
-          <div className="border-b border-zinc-800 px-3 py-1.5 text-xs font-bold text-zinc-400">Inspector</div>
+        <aside className="flex w-72 shrink-0 flex-col border-l border-zinc-200 bg-white">
+          <div className="border-b border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-600">Inspector</div>
           <div className="min-h-0 flex-1 overflow-auto">
             <TransformPanel />
             <IKPanel />
@@ -170,16 +195,15 @@ export function EditorShell() {
             <MotionPanel />
             <InbetweenPanel />
             <PhysicsPanel />
-            <AgentPanel />
             <BoneDetails />
           </div>
         </aside>
       </div>
 
       {/* StatusBar */}
-      <footer className="flex items-center gap-3 border-t border-zinc-800 bg-zinc-950 px-3 py-1 text-[11px] text-zinc-500">
+      <footer className="flex items-center gap-3 border-t border-zinc-200 bg-white px-3 py-1 text-[11px] text-zinc-500">
         <span>P10: 全功能 REAL（Agent Tool Calling）</span>
-        <span>全部 10 阶段完成</span>
+        <span>快捷键：空格播放/暂停 · Ctrl+Z 撤销 · Ctrl+Y 重做</span>
       </footer>
     </div>
   );

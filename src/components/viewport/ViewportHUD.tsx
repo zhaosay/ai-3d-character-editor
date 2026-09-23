@@ -12,10 +12,10 @@ export function ViewportHUD() {
   const meta = useCharacterStore((s) => s.meta);
 
   return (
-    <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300">
-      <span className="rounded bg-zinc-800 px-2 py-0.5 font-mono">FPS {fps}</span>
+    <div className="flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700">
+      <span className="rounded bg-zinc-200 px-2 py-0.5 font-mono">FPS {fps}</span>
       {meta && (
-        <span className="truncate text-zinc-400">
+        <span className="truncate text-zinc-600">
           {meta.fileName} · {meta.gltfInfo.bones} bones · {meta.gltfInfo.meshes} meshes
           {meta.gltfInfo.bones === 0 && <span className="text-amber-400">（无骨骼，仅预览）</span>}
         </span>
@@ -33,7 +33,7 @@ function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: (
   return (
     <button
       onClick={onClick}
-      className={`rounded px-2 py-0.5 ${on ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+      className={`rounded px-2 py-0.5 ${on ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-600'}`}
     >
       {label}
     </button>

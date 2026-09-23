@@ -25,8 +25,8 @@ export function InbetweenPanel() {
 
   if (!active) {
     return (
-      <div className="space-y-2 border-b border-zinc-800 p-3 text-xs">
-        <div className="font-bold text-zinc-300">AI Inbetween</div>
+      <div className="space-y-2 border-b border-zinc-200 p-3 text-xs">
+        <div className="font-bold text-zinc-700">AI Inbetween</div>
         <div className="text-zinc-500">先创建动画</div>
       </div>
     );
@@ -53,30 +53,30 @@ export function InbetweenPanel() {
   };
 
   return (
-    <div className="space-y-2 border-b border-zinc-800 p-3 text-xs">
-      <div className="flex items-center gap-2 font-bold text-zinc-300">
+    <div className="space-y-2 border-b border-zinc-200 p-3 text-xs">
+      <div className="flex items-center gap-2 font-bold text-zinc-700">
         AI Inbetween
         <ProviderBadge source={providerId === 'math' ? 'real' : 'mock'} label={providerId === 'math' ? '数学补帧' : 'AI(占位)'} />
       </div>
-      <div className="rounded bg-zinc-900 p-2 font-mono text-[11px] text-zinc-400">
+      <div className="rounded bg-zinc-100 p-2 font-mono text-[11px] text-zinc-600">
         当前动画 {totalKeys} keys · {active.tracks.length} tracks · {active.duration.toFixed(1)}s
       </div>
       <div className="flex gap-1">
-        <button onClick={() => setProvider('math')} className={`flex-1 rounded px-2 py-1 ${providerId === 'math' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}>
+        <button onClick={() => setProvider('math')} className={`flex-1 rounded px-2 py-1 ${providerId === 'math' ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-600'}`}>
           数学(REAL)
         </button>
-        <button onClick={() => setProvider('ai')} className={`flex-1 rounded px-2 py-1 ${providerId === 'ai' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}>
+        <button onClick={() => setProvider('ai')} className={`flex-1 rounded px-2 py-1 ${providerId === 'ai' ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-600'}`}>
           AI(MOCK)
         </button>
       </div>
-      <label className="flex items-center justify-between gap-2 text-zinc-400">
+      <label className="flex items-center justify-between gap-2 text-zinc-600">
         密度
-        <input type="number" min={2} max={120} step={1} value={density} onChange={(e) => setDensity(Number(e.target.value))} className="w-16 rounded bg-zinc-900 px-1 py-0.5 text-right font-mono outline-none ring-1 ring-zinc-800" />
+        <input type="number" min={2} max={120} step={1} value={density} onChange={(e) => setDensity(Number(e.target.value))} className="w-16 rounded bg-zinc-100 px-1 py-0.5 text-right font-mono outline-none ring-1 ring-zinc-300" />
         keys/s
       </label>
-      <label className="flex items-center justify-between gap-2 text-zinc-400">
+      <label className="flex items-center justify-between gap-2 text-zinc-600">
         缓动
-        <select value={ease} onChange={(e) => setEase(e.target.value as never)} className="rounded bg-zinc-900 px-1 py-0.5 outline-none ring-1 ring-zinc-800">
+        <select value={ease} onChange={(e) => setEase(e.target.value as never)} className="rounded bg-zinc-100 px-1 py-0.5 outline-none ring-1 ring-zinc-300">
           <option value="linear">linear</option>
           <option value="easeIn">easeIn</option>
           <option value="easeOut">easeOut</option>
@@ -85,18 +85,18 @@ export function InbetweenPanel() {
         </select>
       </label>
       <div className="flex gap-1">
-        <button onClick={() => setRangeChoice('all')} className={`flex-1 rounded px-2 py-1 ${rangeChoice === 'all' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}>
+        <button onClick={() => setRangeChoice('all')} className={`flex-1 rounded px-2 py-1 ${rangeChoice === 'all' ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-600'}`}>
           整段补
         </button>
-        <button onClick={() => setRangeChoice('from-0-1')} className={`flex-1 rounded px-2 py-1 ${rangeChoice === 'from-0-1' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}>
+        <button onClick={() => setRangeChoice('from-0-1')} className={`flex-1 rounded px-2 py-1 ${rangeChoice === 'from-0-1' ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-600'}`}>
           前半段
         </button>
       </div>
-      <button onClick={() => void run()} disabled={busy || totalKeys === 0} className="w-full rounded bg-emerald-600 px-2 py-1.5 text-white disabled:bg-zinc-800 disabled:text-zinc-500">
+      <button onClick={() => void run()} disabled={busy || totalKeys === 0} className="w-full rounded bg-emerald-600 px-2 py-1.5 text-white disabled:bg-zinc-200 disabled:text-zinc-500">
         {busy ? '补帧中…' : '一键补帧（可撤销）'}
       </button>
       {result && (
-        <div className="rounded bg-zinc-900 p-2 text-[11px] text-zinc-400">
+        <div className="rounded bg-zinc-100 p-2 text-[11px] text-zinc-600">
           <div className="flex items-center gap-2">
             <ProviderBadge source={result.meta.source} label={`${result.meta.provider} · +${result.meta.addedKeys} keys`} />
             <span>{result.meta.latencyMs}ms</span>

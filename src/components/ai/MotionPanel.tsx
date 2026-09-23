@@ -70,18 +70,18 @@ export function MotionPanel() {
   };
 
   return (
-    <div className="space-y-2 border-b border-zinc-800 p-3 text-xs">
-      <div className="font-bold text-zinc-300">AI Motion 生成</div>
+    <div className="space-y-2 border-b border-zinc-200 p-3 text-xs">
+      <div className="font-bold text-zinc-700">AI Motion 生成</div>
       <div className="flex gap-1">
         <button
           onClick={() => setProvider('mock')}
-          className={`flex-1 rounded px-2 py-1 ${providerId === 'mock' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+          className={`flex-1 rounded px-2 py-1 ${providerId === 'mock' ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-600'}`}
         >
           本地Mock
         </button>
         <button
           onClick={() => setProvider('http')}
-          className={`flex-1 rounded px-2 py-1 ${providerId === 'http' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+          className={`flex-1 rounded px-2 py-1 ${providerId === 'http' ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-600'}`}
         >
           HTTP后端
         </button>
@@ -91,12 +91,12 @@ export function MotionPanel() {
           <input
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
-            className="w-full rounded bg-zinc-900 px-2 py-1 font-mono outline-none ring-1 ring-zinc-800"
+            className="w-full rounded bg-zinc-100 px-2 py-1 font-mono outline-none ring-1 ring-zinc-300"
           />
-          <button onClick={() => void checkHealth()} className="rounded bg-zinc-800 px-2 py-1">
+          <button onClick={() => void checkHealth()} className="rounded bg-zinc-200 px-2 py-1">
             测试连接
           </button>
-          {health && <div className="text-zinc-400">{health}</div>}
+          {health && <div className="text-zinc-600">{health}</div>}
         </div>
       )}
       <textarea
@@ -104,10 +104,10 @@ export function MotionPanel() {
         onChange={(e) => setPrompt(e.target.value)}
         rows={2}
         placeholder="挥手 / 拔剑 / 格挡 / 踢腿 / 踏步（模板关键词）"
-        className="w-full rounded bg-zinc-900 px-2 py-1 outline-none ring-1 ring-zinc-800"
+        className="w-full rounded bg-zinc-100 px-2 py-1 outline-none ring-1 ring-zinc-300"
       />
       <div className="flex items-center gap-2">
-        <label className="flex items-center gap-1 text-zinc-400">
+        <label className="flex items-center gap-1 text-zinc-600">
           时长
           <input
             type="number"
@@ -116,10 +116,10 @@ export function MotionPanel() {
             step={0.5}
             value={duration}
             onChange={(e) => setDuration(Number(e.target.value))}
-            className="w-14 rounded bg-zinc-900 px-1 py-0.5 outline-none ring-1 ring-zinc-800"
+            className="w-14 rounded bg-zinc-100 px-1 py-0.5 outline-none ring-1 ring-zinc-300"
           />
         </label>
-        <select value={fps} onChange={(e) => setFps(Number(e.target.value) as 12 | 24 | 30 | 60)} className="rounded bg-zinc-900 px-1 py-1 outline-none ring-1 ring-zinc-800">
+        <select value={fps} onChange={(e) => setFps(Number(e.target.value) as 12 | 24 | 30 | 60)} className="rounded bg-zinc-100 px-1 py-1 outline-none ring-1 ring-zinc-300">
           {[12, 24, 30, 60].map((f) => (
             <option key={f} value={f}>{f}fps</option>
           ))}
@@ -129,12 +129,12 @@ export function MotionPanel() {
         onClick={() => void generate()}
         disabled={busy || !sceneObject}
         title={!sceneObject ? '先加载角色' : '生成并写入新动画'}
-        className="w-full rounded bg-emerald-600 px-2 py-1.5 text-white disabled:bg-zinc-800 disabled:text-zinc-500"
+        className="w-full rounded bg-emerald-600 px-2 py-1.5 text-white disabled:bg-zinc-200 disabled:text-zinc-500"
       >
         {busy ? '生成中…' : '生成动作 → 新动画'}
       </button>
       {meta && (
-        <div className="space-y-1 rounded bg-zinc-900 p-2 text-[11px] text-zinc-400">
+        <div className="space-y-1 rounded bg-zinc-100 p-2 text-[11px] text-zinc-600">
           <div className="flex flex-wrap items-center gap-2">
             <ProviderBadge source={meta.source} label={`${meta.provider}·动作`} />
             <ProviderBadge source={meta.planner === 'llm' ? 'real' : 'mock'} label={`规划:${meta.planner ?? '?'}${meta.model ? ` ${meta.model}` : ''}`} />

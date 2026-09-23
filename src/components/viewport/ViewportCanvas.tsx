@@ -24,9 +24,9 @@ export function ViewportCanvas() {
   const sceneObject = useCharacterStore((s) => s.sceneObject);
 
   return (
-    <div className="relative h-full w-full bg-[#0b0d12]">
+    <div className="relative h-full w-full bg-white">
       <Canvas shadows={shadows} camera={{ position: [2.5, 1.8, 3.2], fov: 45 }} dpr={[1, 2]}>
-        <color attach="background" args={['#0b0d12']} />
+        <color attach="background" args={['#ffffff']} />
         <hemisphereLight intensity={0.9} />
         <directionalLight
           position={[4, 6, 3]}
@@ -47,8 +47,8 @@ export function ViewportCanvas() {
           <Grid
             position={[0, 0.001, 0]}
             args={[30, 30]}
-            cellColor="#2a2f3a"
-            sectionColor="#3d4454"
+            cellColor="#d9dfe7"
+            sectionColor="#a9b4c2"
             fadeDistance={25}
             infiniteGrid
           />
@@ -69,10 +69,10 @@ export function ViewportCanvas() {
 function EmptyHint() {
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-      <div className="rounded bg-black/60 px-5 py-4 text-center text-sm text-zinc-300">
-        <div className="text-base text-white">拖入 .glb 人物开始</div>
-        <div className="mt-1 text-xs text-zinc-400">或点左侧「示例男/女角色」直接试玩</div>
-        <div className="mt-1 text-xs text-zinc-400">支持 Orbit 旋转 / 右键平移 / 滚轮缩放</div>
+      <div className="rounded bg-white/90 px-5 py-4 text-center text-sm text-zinc-600 ring-1 ring-zinc-200">
+        <div className="text-base text-zinc-900">拖入 .glb 人物开始</div>
+        <div className="mt-1 text-xs text-zinc-600">或点左侧「示例男/女角色」直接试玩</div>
+        <div className="mt-1 text-xs text-zinc-600">支持 Orbit 旋转 / 右键平移 / 滚轮缩放</div>
       </div>
     </div>
   );

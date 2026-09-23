@@ -14,10 +14,10 @@ export function BoneDetails() {
 
   const parent = node.parent ? snapshot?.nodes[node.parent] : undefined;
   return (
-    <div className="space-y-2 p-3 text-xs text-zinc-300">
+    <div className="space-y-2 p-3 text-xs text-zinc-700">
       <div>
         <div className="text-[11px] text-zinc-500">名称</div>
-        <div className="font-mono text-sm text-white">{node.name}</div>
+        <div className="font-mono text-sm text-zinc-900">{node.name}</div>
       </div>
       <KV k="Semantic" v={node.semantic ?? '未映射'} />
       <KV k="Depth" v={String(node.depth)} />
@@ -35,7 +35,7 @@ export function BoneDetails() {
         <div className="text-[11px] text-zinc-500">Rest Pose（加载快照）</div>
         <div className="font-mono">{node.restLocal.position.map(fmt).join(', ')}</div>
       </div>
-      <div className="rounded bg-zinc-900 p-2 text-[11px] text-zinc-500">
+      <div className="rounded bg-zinc-100 p-2 text-[11px] text-zinc-500">
         Pose 编辑 / IK / Keyframe 在 P2 / P3 实现，本阶段 Transform 只读。
       </div>
     </div>

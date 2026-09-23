@@ -15,7 +15,7 @@ export function Timeline() {
 
   if (!active) {
     return (
-      <div className="flex items-center gap-2 border-t border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-400">
+      <div className="flex items-center gap-2 border-t border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-600">
         <span>暂无动画 — 先加载角色，然后新建动画开始打关键帧。</span>
         <CreateButton />
       </div>
@@ -23,7 +23,7 @@ export function Timeline() {
   }
 
   return (
-    <div className="border-t border-zinc-800 bg-zinc-950 text-zinc-200">
+    <div className="border-t border-zinc-200 bg-white text-zinc-800">
       <TransportBar />
       <Ruler
         duration={active.duration}
@@ -49,7 +49,7 @@ function CreateButton() {
       onClick={() => createAnimation()}
       disabled={!sceneObject}
       title={!sceneObject ? '先加载 GLB 角色' : '新建空动画'}
-      className="rounded bg-emerald-600 px-2 py-1 text-xs text-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+      className="rounded bg-emerald-600 px-2 py-1 text-xs text-white disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500"
     >
       + 新建动画
     </button>
@@ -75,10 +75,10 @@ function TransportBar() {
 
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 pt-2 text-xs">
-      <button onClick={() => setPlaying(true)} disabled={playing} className="rounded bg-emerald-600 px-2 py-1 text-white disabled:bg-zinc-800 disabled:text-zinc-500">
+      <button onClick={() => setPlaying(true)} disabled={playing} className="rounded bg-emerald-600 px-2 py-1 text-white disabled:bg-zinc-200 disabled:text-zinc-500">
         ▶ 播放
       </button>
-      <button onClick={() => setPlaying(false)} disabled={!playing} className="rounded bg-zinc-800 px-2 py-1 disabled:text-zinc-600">
+      <button onClick={() => setPlaying(false)} disabled={!playing} className="rounded bg-zinc-200 px-2 py-1 disabled:text-zinc-600">
         ⏸ 暂停
       </button>
       <button
@@ -86,17 +86,17 @@ function TransportBar() {
           setPlaying(false);
           setTime(0);
         }}
-        className="rounded bg-zinc-800 px-2 py-1"
+        className="rounded bg-zinc-200 px-2 py-1"
       >
         ⏹ 停止
       </button>
-      <button onClick={toggleLoop} className={`rounded px-2 py-1 ${loop ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}>
+      <button onClick={toggleLoop} className={`rounded px-2 py-1 ${loop ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-600'}`}>
         循环
       </button>
-      <span className="font-mono text-zinc-300">
+      <span className="font-mono text-zinc-700">
         {currentTime.toFixed(2)}s / {active.duration.toFixed(1)}s · {active.fps}fps
       </span>
-      <label className="flex items-center gap-1 text-zinc-400">
+      <label className="flex items-center gap-1 text-zinc-600">
         时长
         <input
           type="number"
@@ -105,11 +105,11 @@ function TransportBar() {
           step={0.5}
           value={active.duration}
           onChange={(e) => setDuration(Number(e.target.value))}
-          className="w-16 rounded bg-zinc-900 px-1 py-0.5 text-zinc-200 outline-none ring-1 ring-zinc-800"
+          className="w-16 rounded bg-zinc-100 px-1 py-0.5 text-zinc-800 outline-none ring-1 ring-zinc-300"
         />
         s
       </label>
-      <select value={activeId ?? ''} onChange={(e) => selectAnimation(e.target.value)} className="rounded bg-zinc-900 px-1 py-1 text-xs outline-none ring-1 ring-zinc-800">
+      <select value={activeId ?? ''} onChange={(e) => selectAnimation(e.target.value)} className="rounded bg-zinc-100 px-1 py-1 text-xs outline-none ring-1 ring-zinc-300">
         {animations.map((a) => (
           <option key={a.id} value={a.id}>
             {a.name}
@@ -120,16 +120,16 @@ function TransportBar() {
         value={active.name}
         onChange={(e) => renameAnimation(active.id, e.target.value)}
         title="重命名当前动画"
-        className="w-28 rounded bg-zinc-900 px-1 py-1 text-xs outline-none ring-1 ring-zinc-800"
+        className="w-28 rounded bg-zinc-100 px-1 py-1 text-xs outline-none ring-1 ring-zinc-300"
       />
-      <button onClick={() => createAnimation()} className="rounded bg-zinc-800 px-2 py-1">
+      <button onClick={() => createAnimation()} className="rounded bg-zinc-200 px-2 py-1">
         + 新建
       </button>
       <button
         onClick={() => deleteAnimation(active.id)}
         disabled={animations.length <= 1}
         title={animations.length <= 1 ? '至少保留一个动画' : '删除当前动画（可撤销）'}
-        className="rounded bg-zinc-800 px-2 py-1 text-red-300 disabled:text-zinc-600"
+        className="rounded bg-zinc-200 px-2 py-1 text-red-600 disabled:text-zinc-600"
       >
         删除
       </button>
@@ -195,12 +195,12 @@ function Ruler({
           }
           setScrubbing(false);
         }}
-        className="relative h-12 cursor-crosshair select-none rounded bg-zinc-900 ring-1 ring-zinc-800"
+        className="relative h-12 cursor-crosshair select-none rounded bg-zinc-100 ring-1 ring-zinc-300"
       >
         {/* 刻度 */}
         {Array.from({ length: Math.floor(duration) + 1 }, (_, s) => (
           <div key={s} className="absolute top-0 bottom-0" style={{ left: `${(s / duration) * 100}%` }}>
-            <div className="h-2 w-px bg-zinc-700" />
+            <div className="h-2 w-px bg-zinc-200" />
             <div className="text-[10px] text-zinc-500">{s}s</div>
           </div>
         ))}
@@ -208,7 +208,7 @@ function Ruler({
         {allTimes.map((k, i) => (
           <div
             key={`${k.boneName}-${k.time}-${i}`}
-            className="absolute top-6 h-2 w-2 rotate-45 bg-zinc-600"
+            className="absolute top-6 h-2 w-2 rotate-45 bg-zinc-300"
             style={{ left: `calc(${(k.time / duration) * 100}% - 4px)` }}
             title={`${k.boneName} @${k.time.toFixed(2)}s`}
           />
@@ -264,21 +264,21 @@ function KeyPanel() {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-xs text-zinc-300">
+    <div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-xs text-zinc-700">
       <span className="text-zinc-500">
         {boneName ? `选中: ${boneName} · ${keys.length} keys` : '先在左侧选中一块骨骼'}
       </span>
       <button
         onClick={addKey}
         disabled={!boneName || !sceneObject}
-        className="rounded bg-emerald-600 px-2 py-1 text-white disabled:bg-zinc-800 disabled:text-zinc-500"
+        className="rounded bg-emerald-600 px-2 py-1 text-white disabled:bg-zinc-200 disabled:text-zinc-500"
       >
         ◆ 打关键帧 @ {currentTime.toFixed(2)}s
       </button>
       <button
         onClick={() => boneName && deleteRotationKey(boneName, currentTime)}
         disabled={!boneName}
-        className="rounded bg-zinc-800 px-2 py-1"
+        className="rounded bg-zinc-200 px-2 py-1"
       >
         删除当前帧
       </button>
@@ -291,7 +291,7 @@ function KeyPanel() {
               onClick={() => setTime(k.time)}
               onDoubleClick={() => boneName && deleteRotationKey(boneName, k.time)}
               title="单击跳转，双击删除"
-              className={`rounded px-1.5 py-0.5 font-mono ${Math.abs(k.time - currentTime) < 1e-3 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-300'}`}
+              className={`rounded px-1.5 py-0.5 font-mono ${Math.abs(k.time - currentTime) < 1e-3 ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-700'}`}
             >
               {k.time.toFixed(2)}s
             </button>

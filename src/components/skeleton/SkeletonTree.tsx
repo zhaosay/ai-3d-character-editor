@@ -27,7 +27,7 @@ export function SkeletonTree() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="搜索骨骼…"
-          className="w-full rounded bg-zinc-900 px-2 py-1 text-xs text-zinc-200 outline-none ring-1 ring-zinc-800 focus:ring-emerald-600"
+          className="w-full rounded bg-zinc-100 px-2 py-1 text-xs text-zinc-800 outline-none ring-1 ring-zinc-300 focus:ring-emerald-600"
         />
         <div className="mt-1 text-[11px] text-zinc-500">{snapshot.boneCount} bones</div>
       </div>
@@ -89,14 +89,14 @@ function BoneRow({
     <button
       onClick={() => onSelect(id)}
       className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-xs ${
-        selected ? 'bg-emerald-600/30 text-emerald-200' : 'text-zinc-300 hover:bg-zinc-800'
+        selected ? 'bg-emerald-100 text-emerald-800' : 'text-zinc-700 hover:bg-zinc-200'
       }`}
       style={{ paddingLeft: 6 + depth * 12 }}
       title={node.name}
     >
       <span className="text-zinc-600">{node.children.length > 0 ? '▾' : '·'}</span>
       <span className="truncate">{node.name}</span>
-      {node.semantic && <span className="ml-auto shrink-0 rounded bg-zinc-800 px-1 text-[10px] text-zinc-400">{node.semantic}</span>}
+      {node.semantic && <span className="ml-auto shrink-0 rounded bg-zinc-200 px-1 text-[10px] text-zinc-600">{node.semantic}</span>}
     </button>
   );
 }

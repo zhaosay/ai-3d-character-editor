@@ -82,8 +82,8 @@ export function PhysicsPanel() {
   const kinds = new Set((issues ?? []).map((i) => i.kind));
 
   return (
-    <div className="space-y-2 border-b border-zinc-800 p-3 text-xs">
-      <div className="flex items-center gap-2 font-bold text-zinc-300">
+    <div className="space-y-2 border-b border-zinc-200 p-3 text-xs">
+      <div className="flex items-center gap-2 font-bold text-zinc-700">
         Physics <ProviderBadge source="real" label="P9 本地分析" />
       </div>
       {!active && <div className="text-zinc-500">先创建动画</div>}
@@ -91,7 +91,7 @@ export function PhysicsPanel() {
       <button
         onClick={check}
         disabled={busy || !sceneObject || !active || !names}
-        className="w-full rounded bg-emerald-600 px-2 py-1.5 text-white disabled:bg-zinc-800 disabled:text-zinc-500"
+        className="w-full rounded bg-emerald-600 px-2 py-1.5 text-white disabled:bg-zinc-200 disabled:text-zinc-500"
       >
         {busy ? '分析中…' : '一键检查（重心/脚滑/落地）'}
       </button>
@@ -101,12 +101,12 @@ export function PhysicsPanel() {
       ))}
       {issues && issues.length === 0 && <div className="text-emerald-400">未发现问题 ✓</div>}
       {(issues ?? []).map((issue, i) => (
-        <div key={i} className="rounded bg-zinc-900 p-2 text-[11px]">
-          <button onClick={() => setTime(issue.t0)} className="text-left text-zinc-200 hover:text-emerald-300" title="跳转到问题时间">
+        <div key={i} className="rounded bg-zinc-100 p-2 text-[11px]">
+          <button onClick={() => setTime(issue.t0)} className="text-left text-zinc-800 hover:text-emerald-300" title="跳转到问题时间">
             {issue.message} →
           </button>
           {issue.kind === 'footSlide' && (
-            <button onClick={() => fixSlide(issue)} className="mt-1 w-full rounded bg-zinc-700 px-2 py-1 text-white">
+            <button onClick={() => fixSlide(issue)} className="mt-1 w-full rounded bg-zinc-200 px-2 py-1 text-zinc-800">
               脚锁修复此段
             </button>
           )}
@@ -115,10 +115,10 @@ export function PhysicsPanel() {
       {issues && issues.length > 0 && (
         <div className="flex gap-1">
           {kinds.has('penetration') && (
-            <button onClick={fixPenetration} className="flex-1 rounded bg-zinc-700 px-2 py-1">修穿透</button>
+            <button onClick={fixPenetration} className="flex-1 rounded bg-zinc-200 px-2 py-1">修穿透</button>
           )}
           {kinds.has('accelSpike') && (
-            <button onClick={fixAccel} className="flex-1 rounded bg-zinc-700 px-2 py-1">落地缓冲</button>
+            <button onClick={fixAccel} className="flex-1 rounded bg-zinc-200 px-2 py-1">落地缓冲</button>
           )}
         </div>
       )}
@@ -142,7 +142,7 @@ function HeightChart({ samples, issues }: { samples: TrajSample[]; issues: Physi
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
   return (
-    <div className="rounded bg-zinc-900 p-1">
+    <div className="rounded bg-zinc-100 p-1">
       <div className="mb-0.5 text-[10px] text-zinc-500">重心高度–时间（{min.toFixed(2)}–{max.toFixed(2)}m）</div>
       <svg width={W} height={H} className="w-full">
         <polyline points={pts} fill="none" stroke="#34d399" strokeWidth="1.5" />
