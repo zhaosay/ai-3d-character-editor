@@ -27,6 +27,7 @@ backend/.venv/bin/uvicorn main:app --app-dir backend --port 8123
 公开模型见 `public/samples/README.md`，署名见 `public/samples/ATTRIBUTION.md`。
 
 操作：顶部 🤖 AI 命令条直接对话改动作（一键快捷指令）；`空格`=播放/暂停，`Ctrl+Z`=撤销，`Ctrl+Y`=重做。
+右侧 Inspector 为悬浮弹窗（右上 ✕ 关闭，不挤压视口）。生成动作后会显示"X/Y 轨道已绑定"，未绑定的骨骼会点名（换角色后需重新生成）。
 
 ## 功能地图
 
@@ -54,7 +55,7 @@ backend/.venv/bin/uvicorn main:app --app-dir backend --port 8123
 模型只输出 `{reply, actions}` JSON 并经 `parseAction` 逐个校验；非法 action 丢弃并警告，不整体失败。
 助手面板另有一键快捷指令（左手抬高 / 下蹲 / 生成挥手动作 / 检查脚滑 / 补帧），点即发送。
 
-## 动作模板关键词（过程式，中英）
+## 动作模板关键词（过程式，中英；相对各绑定静息的偏移量，T-pose/A-pose 通用）
 
 | 模板 | 关键词 |
 |---|---|

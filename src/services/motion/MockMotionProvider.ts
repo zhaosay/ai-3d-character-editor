@@ -1,5 +1,5 @@
 import { createEmptyAnimation } from '../../core/animation/types';
-import { buildBoneMap, generateProceduralTracks } from './procedural';
+import { buildBoneMap, buildRestMap, generateProceduralTracks } from './procedural';
 import type { MotionProvider, MotionRequest, MotionResult } from './types';
 
 /** 本地过程式 Provider：传输 REAL（纯本地），动作 MOCK（模板正弦，P6 替换）。 */
@@ -15,11 +15,12 @@ export class MockMotionProvider implements MotionProvider {
     const duration = clampDuration(req.duration);
     const fps = req.fps ?? 30;
     const bones = req.skeleton ? buildBoneMap(req.skeleton) : {};
+    const rest = req.skeleton ? buildRestMap(req.skeleton) : {};
     const { template, templates, tracks, warnings, segments } = generateProceduralTracks(bones, {
       prompt: req.prompt,
       duration,
       seed: req.seed ?? 0,
-    });
+    }, rest);
     if (tracks.length === 0) {
       throw new Error('骨骼语义映射为空，无法生成（请先加载带命名骨骼的角色）');
     }

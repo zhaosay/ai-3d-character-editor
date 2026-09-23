@@ -246,6 +246,8 @@ export function AgentPanel() {
                     ? '（目标不可达，已钳制）' : ''}
                   {r.ok && e.actions[i]?.tool === 'check_physics'
                     ? `：${((r.data as { issues?: unknown[] })?.issues ?? []).length} 个问题` : ''}
+                  {r.ok && e.actions[i]?.tool === 'generate_motion' && ((r.data as { unbound?: string[] })?.unbound?.length ?? 0) > 0
+                    ? `（未绑定：${((r.data as { unbound?: string[] }).unbound ?? []).join('、')}）` : ''}
                 </span>
               ))}
             </div>

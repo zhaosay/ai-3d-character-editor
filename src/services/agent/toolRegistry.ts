@@ -212,7 +212,10 @@ async function generateMotion(args: Record<string, unknown>): Promise<ToolResult
       }
       return { animations: anims, activeId: id, currentTime: 0 };
     });
-    return { ok: true, data: { animationId: id, tracks: r.animation.tracks.length, template: r.meta.template, warnings: r.meta.warnings } };
+    const scene = useCharacterStore.getState().sceneObject;
+    const live = scene ? indexBonesByName(scene) : new Map();
+    const unbound = [...new Set(r.animation.tracks.map((t) => t.boneName))].filter((n) => !live.has(n));
+    return { ok: true, data: { animationId: id, tracks: r.animation.tracks.length, template: r.meta.template, warnings: r.meta.warnings, unbound } };
   } catch (e) {
     return err('GENERATE_FAILED', e instanceof Error ? e.message : '生成失败');
   }

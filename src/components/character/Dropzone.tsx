@@ -39,6 +39,8 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
   const [rpmUrl, setRpmUrl] = useState('');
   const setError = useCharacterStore((s) => s.setError);
   const error = useCharacterStore((s) => s.error);
+  const currentName = useCharacterStore((s) => s.meta?.fileName ?? null);
+  const isActive = (name: string) => (currentName === name ? 'ring-2 ring-offset-1 ring-emerald-400' : '');
 
   const run = useCallback(
     async (label: string, task: () => Promise<LoadedCharacter>) => {
@@ -127,7 +129,9 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
         {loading ? `加载中${busyLabel ?? ''}…` : '拖拽 .glb / .gltf 到此，或点击选择'}
       </label>
 
-      <div className="mt-2 text-left text-[11px] font-bold text-zinc-500">真人（Mixamo 兼容骨架）</div>
+      <div className="mt-2 text-left text-[11px] font-bold text-zinc-500">
+        真人（Mixamo 兼容骨架）{currentName && <span className="ml-1 font-normal text-emerald-600">● {currentName}</span>}
+      </div>
       <div className="mt-1 grid grid-cols-2 gap-1">
         {REMOTE_PRESETS.map((p) => (
           <button
@@ -135,7 +139,7 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
             onClick={() => handlePreset(p)}
             disabled={loading}
             title={`${p.hint}：${p.url}`}
-            className={`${btn} bg-sky-700 hover:bg-sky-600`}
+            className={`${btn} bg-sky-700 hover:bg-sky-600 ${isActive(p.url.split('/').pop() ?? '')}`}
           >
             {p.label}{busy(p.label)}
           </button>
@@ -146,7 +150,7 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
             onClick={() => handleBundled(p)}
             disabled={loading}
             title={p.hint}
-            className={`${btn} bg-teal-700 hover:bg-teal-600`}
+            className={`${btn} bg-teal-700 hover:bg-teal-600 ${isActive(p.path.split('/').pop() ?? '')}`}
           >
             {p.label}{busy(p.label)}
           </button>
@@ -174,7 +178,7 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
           onClick={() => handleDemo('male')}
           disabled={loading}
           title="男武侠人物：宽肩，束发"
-          className={`${btn} flex-1 bg-emerald-700 hover:bg-emerald-600`}
+          className={`${btn} flex-1 bg-emerald-700 hover:bg-emerald-600 ${isActive('demo-wuxia-male.glb')}`}
         >
           木偶男{busy('示例男')}
         </button>
@@ -182,7 +186,7 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
           onClick={() => handleDemo('female')}
           disabled={loading}
           title="女武侠人物：长发髻"
-          className={`${btn} flex-1 bg-rose-700 hover:bg-rose-600`}
+          className={`${btn} flex-1 bg-rose-700 hover:bg-rose-600 ${isActive('demo-wuxia-female.glb')}`}
         >
           木偶女{busy('示例女')}
         </button>

@@ -74,6 +74,7 @@ class MotionGenerateRequest(BaseModel):
     duration: float = Field(default=4, ge=0.5, le=30)
     fps: Literal[12, 24, 30, 60] = 30
     bones: dict[str, str] = {}
+    rest: dict[str, list[float]] = {}
     seed: int = 0
     plan: list[PlanSegment] | None = None
 
@@ -130,7 +131,7 @@ def motion_generate(req: MotionGenerateRequest) -> MotionGenerateResponse:
         planner, model = "external", ""
     else:
         segments, planner, model, warnings = _plan(req.prompt, req.duration)
-    templates, tracks, w2 = generate_tracks_planned(req.bones, segments, req.duration, req.seed)
+    templates, tracks, w2 = generate_tracks_planned(req.bones, segments, req.duration, req.seed, req.rest)
     warnings.extend(w2)
     if not tracks:
         from fastapi import HTTPException

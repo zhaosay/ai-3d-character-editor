@@ -5,6 +5,7 @@ import { useMotionStore } from '../../stores/motionStore';
 import { useSkeletonStore } from '../../stores/skeletonStore';
 import { HttpMotionProvider } from '../../services/motion/HttpMotionProvider';
 import { MockMotionProvider } from '../../services/motion/MockMotionProvider';
+import { indexBonesByName } from '../../core/animation/applyPose';
 import type { MotionMeta } from '../../services/motion/types';
 import { ProviderBadge } from './ProviderBadge';
 
@@ -26,6 +27,7 @@ export function MotionPanel() {
   const [health, setHealth] = useState<string | null>(null);
   const [meta, setMeta] = useState<MotionMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bindReport, setBindReport] = useState<{ ok: number; total: number; missing: string[] } | null>(null);
 
   const checkHealth = async () => {
     setHealth('检测中…');
@@ -62,6 +64,11 @@ export function MotionPanel() {
         return { animations: anims, activeId: id, currentTime: 0 };
       });
       setMeta(result.meta);
+      // 绑定自检：轨道骨骼名在当前场景能否找到，找不到播放时无动作
+      const live = indexBonesByName(sceneObject);
+      const names = [...new Set(result.animation.tracks.map((t) => t.boneName))];
+      const missing = names.filter((n) => !live.has(n));
+      setBindReport({ ok: names.length - missing.length, total: names.length, missing });
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成失败');
     } finally {
@@ -150,6 +157,12 @@ export function MotionPanel() {
           {(meta.warnings ?? []).map((w, i) => (
             <div key={i} className="text-amber-400">⚠ {w}</div>
           ))}
+          {bindReport && (
+            <div className={bindReport.missing.length > 0 ? 'text-red-500' : 'text-emerald-600'}>
+              {bindReport.ok}/{bindReport.total} 轨道已绑定到当前角色
+              {bindReport.missing.length > 0 && `；找不到：${bindReport.missing.join('、')}（换角色后需重新生成）`}
+            </div>
+          )}
         </div>
       )}
       {error && <div className="text-red-400">{error}</div>}

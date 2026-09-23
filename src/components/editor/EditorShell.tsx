@@ -129,6 +129,8 @@ function ToolbarActions() {
 }
 
 export function EditorShell() {
+  // Inspector 改为悬浮弹窗：不挤压视口，右上 ✕ 关闭后变悬浮按钮
+  const [inspectorOpen, setInspectorOpen] = useState(true);
   // 全局快捷键：空格=播放/暂停，Ctrl+Z=撤销，Ctrl+Y/Ctrl+Shift+Z=重做（输入框内不触发）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -165,7 +167,7 @@ export function EditorShell() {
       <AgentPanel />
 
       {/* Main */}
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         {/* Left */}
         <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-200 bg-white">
           <div className="border-b border-zinc-200 p-2">
@@ -186,20 +188,35 @@ export function EditorShell() {
           <Timeline />
         </main>
 
-        {/* Right */}
-        <aside className="flex w-72 shrink-0 flex-col border-l border-zinc-200 bg-white">
-          <div className="border-b border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-600">Inspector</div>
-          <div className="min-h-0 flex-1 overflow-auto">
-            <ThemePanel />
-            <TransformPanel />
-            <IKPanel />
-            <AutoPosePanel />
-            <MotionPanel />
-            <InbetweenPanel />
-            <PhysicsPanel />
-            <BoneDetails />
-          </div>
-        </aside>
+        {/* Right：悬浮 Inspector */}
+        {inspectorOpen ? (
+          <aside className="absolute top-2 right-2 bottom-2 z-20 flex w-72 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-xl">
+            <div className="flex items-center border-b border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-600">
+              Inspector
+              <button onClick={() => setInspectorOpen(false)} title="关闭面板（视口右上可重新打开）" className="ml-auto rounded px-1.5 py-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700">
+                ✕
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto">
+              <ThemePanel />
+              <TransformPanel />
+              <IKPanel />
+              <AutoPosePanel />
+              <MotionPanel />
+              <InbetweenPanel />
+              <PhysicsPanel />
+              <BoneDetails />
+            </div>
+          </aside>
+        ) : (
+          <button
+            onClick={() => setInspectorOpen(true)}
+            title="打开 Inspector"
+            className="absolute top-2 right-2 z-20 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-600 shadow-lg hover:bg-zinc-50"
+          >
+            🛠 Inspector
+          </button>
+        )}
       </div>
 
       {/* StatusBar */}

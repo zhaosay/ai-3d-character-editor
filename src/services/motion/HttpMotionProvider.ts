@@ -1,5 +1,5 @@
 import type { AnimationData } from '../../core/animation/types';
-import { buildBoneMap } from './procedural';
+import { buildBoneMap, buildRestMap } from './procedural';
 import { clampDuration } from './MockMotionProvider';
 import type { MotionProvider, MotionRequest, MotionResult } from './types';
 import type { HonestySource } from '../../types/honesty';
@@ -25,13 +25,14 @@ export class HttpMotionProvider implements MotionProvider {
     const duration = clampDuration(req.duration);
     const fps = req.fps ?? 30;
     const bones = req.skeleton ? buildBoneMap(req.skeleton) : {};
+    const rest = req.skeleton ? buildRestMap(req.skeleton) : {};
     const base = this.baseUrl.replace(/\/+$/, '');
     let res: Response;
     try {
       res = await fetch(`${base}/motion/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: req.prompt, duration, fps, bones, seed: req.seed ?? 0 }),
+        body: JSON.stringify({ prompt: req.prompt, duration, fps, bones, rest, seed: req.seed ?? 0 }),
       });
     } catch {
       throw new Error(`连不上后端 ${base}（确认已运行 uvicorn，见 backend/README.md）`);

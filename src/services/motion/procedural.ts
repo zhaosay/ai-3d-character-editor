@@ -4,6 +4,8 @@ import type { BoneTrack, Keyframe } from '../../core/animation/types';
 import type { QuatTuple } from '../../types/global';
 
 export type BoneMap = Partial<Record<HumanoidSemantic, string>>;
+/** 静息四元数（语义→快照 restLocal），模板偏移量以此为基准合成，适配任意绑定姿势。 */
+export type RestMap = Partial<Record<HumanoidSemantic, QuatTuple>>;
 
 export interface ProcOptions {
   prompt: string;
@@ -37,6 +39,14 @@ export function eulerXyzToQuat(e: EulerDeg): QuatTuple {
   return [q.x, q.y, q.z, q.w];
 }
 
+/** 静息 ⊗ 局部偏移（与 three 的 quaternion.multiply 语义一致）。模板一律输出偏移量，合成时叠到各绑定 rest 上。 */
+export function composeRestOffset(rest: QuatTuple, offset: EulerDeg): QuatTuple {
+  const qr = new THREE.Quaternion(...rest);
+  const qo = new THREE.Quaternion().setFromEuler(new THREE.Euler(offset[0] * D2R, offset[1] * D2R, offset[2] * D2R, 'XYZ'));
+  qr.multiply(qo);
+  return [qr.x, qr.y, qr.z, qr.w];
+}
+
 /** 关键词选模板（中英），命中多个取第一个；无命中用 sway 占位并警告。 */
 export function pickTemplate(prompt: string): string {
   const p = prompt.toLowerCase();
@@ -55,9 +65,9 @@ function schedules(template: string, phase: number): Schedule {
   switch (template) {
     case 'wave': {
       return {
-        'upperArm.R': (t) => [0, 0, -150 + 18 * Math.sin(TAU * (t + phase))],
-        'forearm.R': (t) => [0, 0, -25 + 22 * Math.sin(TAU * (2 * t + phase))],
-        'upperArm.L': () => [0, 0, -8],
+        'upperArm.R': (t) => [0, 0, -55 + 20 * Math.sin(TAU * (t + phase))],
+        'forearm.R': (t) => [0, 0, -20 + 22 * Math.sin(TAU * (2 * t + phase))],
+        'upperArm.L': () => [0, 0, 0],
         'head': (t) => [0, 8 * Math.sin(TAU * (t + phase)), 0],
       };
     }
@@ -65,8 +75,8 @@ function schedules(template: string, phase: number): Schedule {
       return {
         'spine': (t) => [38 * Math.sin(Math.PI * t), 0, 0],
         'head': (t) => [14 * Math.sin(Math.PI * t), 0, 0],
-        'upperArm.L': (t) => [12 * Math.sin(Math.PI * t), 0, -6],
-        'upperArm.R': (t) => [12 * Math.sin(Math.PI * t), 0, 6],
+        'upperArm.L': (t) => [12 * Math.sin(Math.PI * t), 0, 0],
+        'upperArm.R': (t) => [12 * Math.sin(Math.PI * t), 0, 0],
       };
     case 'march': {
       const swing = (t: number, off: number) => 26 * Math.sin(TAU * (2 * t + off));
@@ -75,8 +85,8 @@ function schedules(template: string, phase: number): Schedule {
         'thigh.R': (t) => [swing(t, 0.5), 0, 0],
         'shin.L': (t) => [Math.max(0, -18 * Math.sin(TAU * (2 * t + 0.25))), 0, 0],
         'shin.R': (t) => [Math.max(0, -18 * Math.sin(TAU * (2 * t + 0.75))), 0, 0],
-        'upperArm.L': (t) => [swing(t, 0.5) * 0.6, 0, -6],
-        'upperArm.R': (t) => [swing(t, 0) * 0.6, 0, 6],
+        'upperArm.L': (t) => [swing(t, 0.5) * 0.6, 0, 0],
+        'upperArm.R': (t) => [swing(t, 0) * 0.6, 0, 0],
         'spine': (t) => [3 * Math.sin(TAU * (2 * t)), 0, 0],
       };
     }
@@ -87,7 +97,7 @@ function schedules(template: string, phase: number): Schedule {
         'spine': (t) => [6 * env(t), 28 * env(t), 0],
         'upperArm.R': (t) => [-115 * env(t), 0, -35 * env(t)],
         'forearm.R': (t) => [-25 * env(t), 0, 0],
-        'upperArm.L': (t) => [0, 0, -10 + 12 * env(t)],
+        'upperArm.L': (t) => [0, 0, 12 * env(t)],
         'head': (t) => [0, -12 * env(t), 0],
       };
     }
@@ -108,16 +118,16 @@ function schedules(template: string, phase: number): Schedule {
         'thigh.R': (t) => [-70 * env(t), 0, 0],
         'shin.R': (t) => [35 * env(t) * env(t), 0, 0],
         'thigh.L': () => [0, 0, 0],
-        'upperArm.L': (t) => [-25 * env(t), 0, -6],
-        'upperArm.R': (t) => [25 * env(t), 0, 6],
+        'upperArm.L': (t) => [-25 * env(t), 0, 0],
+        'upperArm.R': (t) => [25 * env(t), 0, 0],
         'spine': (t) => [0, 12 * env(t), 0],
       };
     }
     default:
       return {
         'spine': (t) => [0, 0, 5 * Math.sin(TAU * (t + phase))],
-        'upperArm.L': (t) => [0, 0, -8 + 6 * Math.sin(TAU * (t + phase))],
-        'upperArm.R': (t) => [0, 0, 8 - 6 * Math.sin(TAU * (t + phase))],
+        'upperArm.L': (t) => [0, 0, 6 * Math.sin(TAU * (t + phase))],
+        'upperArm.R': (t) => [0, 0, -6 * Math.sin(TAU * (t + phase))],
         'head': (t) => [0, 0, -4 * Math.sin(TAU * (t + phase))],
       };
   }
@@ -125,11 +135,11 @@ function schedules(template: string, phase: number): Schedule {
 
 /**
  * 过程式模板生成 rotation 轨道（MOCK 质量；规划 heuristic，P6 LLM 在后端）。
- * 多子句提示自动分段合成，假设类人角色、近似 A-pose。
+ * 模板输出相对静息的偏移量，rest 缺失时退化为绝对欧拉（旧行为）并警告。
  */
-export function generateProceduralTracks(bones: BoneMap, opts: ProcOptions): ProcTracks {
+export function generateProceduralTracks(bones: BoneMap, opts: ProcOptions, rest: RestMap = {}): ProcTracks {
   const segments = planClauses(opts.prompt, opts.duration);
-  return generatePlannedTracks(bones, segments, opts.duration, opts.seed ?? 0);
+  return generatePlannedTracks(bones, segments, opts.duration, opts.seed ?? 0, rest);
 }
 
 /** 按标点切分动作子句，启发式规划均分时长。 */
@@ -161,6 +171,7 @@ export function generatePlannedTracks(
   segments: PlanSegment[],
   duration: number,
   seed = 0,
+  rest: RestMap = {},
 ): ProcTracks {
   const warnings: string[] = [];
   const templates: string[] = [];
@@ -188,13 +199,16 @@ export function generatePlannedTracks(
         continue;
       }
       const ks: Keyframe<QuatTuple>[] = [];
+      const restQ = rest[semantic];
+      // rest 缺失时退化为绝对欧拉（旧行为，如后端无静息数据时）
       for (let i = 0; i < n; i++) {
         const time = Math.min(seg.t0 + i * STEP, seg.t1);
-        ks.push({ time: round3(time), value: eulerXyzToQuat(fn((time - seg.t0) / span)), interp: 'linear' });
+        const off = fn((time - seg.t0) / span);
+        ks.push({ time: round3(time), value: restQ ? composeRestOffset(restQ, off) : eulerXyzToQuat(off), interp: 'linear' });
       }
       const lastT = ks[ks.length - 1].time;
       if (lastT < seg.t1 - TIME_EPS) {
-        ks.push({ time: seg.t1, value: eulerXyzToQuat(fn(1)), interp: 'linear' });
+        ks.push({ time: seg.t1, value: restQ ? composeRestOffset(restQ, fn(1)) : eulerXyzToQuat(fn(1)), interp: 'linear' });
       }
       const arr = perBone.get(boneName) ?? [];
       arr.push(...ks);
@@ -232,6 +246,14 @@ export function buildBoneMap(obj: { nodes: Record<string, { name: string; semant
   const map: BoneMap = {};
   for (const n of Object.values(obj.nodes)) {
     if (n.semantic && !map[n.semantic]) map[n.semantic] = n.name;
+  }
+  return map;
+}
+
+export function buildRestMap(obj: { nodes: Record<string, { semantic: HumanoidSemantic | null; restLocal: { quaternion: QuatTuple } }> }): RestMap {
+  const map: RestMap = {};
+  for (const n of Object.values(obj.nodes)) {
+    if (n.semantic && !map[n.semantic]) map[n.semantic] = [...n.restLocal.quaternion] as QuatTuple;
   }
   return map;
 }

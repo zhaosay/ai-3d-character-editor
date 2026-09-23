@@ -64,7 +64,7 @@ function boneSpecs(P: GenderParams): BoneSpec[] {
     { name: 'Spine', parent: 'Hips', pos: [0, 0.13, 0] },
     { name: 'Chest', parent: 'Spine', pos: [0, 0.19, 0] },
     { name: 'Neck', parent: 'Chest', pos: [0, 0.17, 0] },
-    { name: 'Head', parent: 'Neck', pos: [0, 0.11, 0] },
+    { name: 'Head', parent: 'Neck', pos: [0, 0.13, 0] },
     { name: 'UpperArm_L', parent: 'Chest', pos: [P.shoulderX, 0.16, 0] },
     { name: 'Forearm_L', parent: 'UpperArm_L', pos: [0, -0.3, 0] },
     { name: 'Hand_L', parent: 'Forearm_L', pos: [0, -0.28, 0] },
@@ -146,23 +146,23 @@ function torsoParts(P: GenderParams, gender: DemoGender): PartSpec[] {
     { geo: box(P.pelvisTop * 2 + 0.02, 0.05, 0.22, 0, 1.09, 0), bone: 'Hips', mat: P.accent, theme: 'cloth' }, // 腰带
     { geo: cylinder(P.waistTop, P.waistBottom, 0.24, 0, 1.21, 0), bone: 'Spine', mat: P.body, theme: 'skin' },
     { geo: cylinder(P.chestTop, P.chestBottom, 0.28, 0, 1.37, 0), bone: 'Chest', mat: P.body, theme: 'skin' },
-    { geo: cylinder(0.05, 0.058, 0.12, 0, 1.53, 0), bone: 'Neck', mat: P.body, theme: 'skin' },
-    { geo: sphere(0.115, 0, 1.7, 0.01, 0.92, 1.08, 0.95), bone: 'Head', mat: P.body, theme: 'skin' },
-    { geo: box(0.03, 0.05, 0.035, 0, 1.685, 0.115), bone: 'Head', mat: P.body, theme: 'skin' }, // 鼻
-    { geo: sphere(0.016, 0.042, 1.715, 0.1), bone: 'Head', mat: DARK, theme: 'cloth' }, // 眼
-    { geo: sphere(0.016, -0.042, 1.715, 0.1), bone: 'Head', mat: DARK, theme: 'cloth' },
-    { geo: box(0.21, 0.055, 0.21, 0, 1.75, 0.005), bone: 'Head', mat: P.accent, theme: 'cloth' }, // 抹额
+    { geo: cylinder(0.05, 0.058, 0.16, 0, 1.535, 0), bone: 'Neck', mat: P.body, theme: 'skin' },
+    { geo: sphere(0.108, 0, 1.72, 0.01, 0.92, 1.08, 0.95), bone: 'Head', mat: P.body, theme: 'skin' },
+    { geo: box(0.03, 0.05, 0.035, 0, 1.705, 0.11), bone: 'Head', mat: P.body, theme: 'skin' }, // 鼻
+    { geo: sphere(0.016, 0.042, 1.735, 0.1), bone: 'Head', mat: DARK, theme: 'cloth' }, // 眼
+    { geo: sphere(0.016, -0.042, 1.735, 0.1), bone: 'Head', mat: DARK, theme: 'cloth' },
+    { geo: box(0.21, 0.055, 0.21, 0, 1.77, 0.005), bone: 'Head', mat: P.accent, theme: 'cloth' }, // 抹额
   ];
   if (gender === 'female') {
     parts.push(
       { geo: sphere(0.068, 0.075, 1.4, 0.105), bone: 'Chest', mat: P.body, theme: 'skin' }, // 胸型
       { geo: sphere(0.068, -0.075, 1.4, 0.105), bone: 'Chest', mat: P.body, theme: 'skin' },
-      { geo: box(0.17, 0.42, 0.07, 0, 1.52, -0.125), bone: 'Head', mat: DARK, theme: 'cloth' }, // 长发
-      { geo: sphere(0.06, 0, 1.8, -0.085), bone: 'Head', mat: DARK, theme: 'cloth' }, // 发髻
+      { geo: box(0.17, 0.42, 0.07, 0, 1.54, -0.125), bone: 'Head', mat: DARK, theme: 'cloth' }, // 长发
+      { geo: sphere(0.06, 0, 1.82, -0.085), bone: 'Head', mat: DARK, theme: 'cloth' }, // 发髻
     );
   } else {
     parts.push(
-      { geo: box(0.19, 0.05, 0.2, 0, 1.815, 0.005), bone: 'Head', mat: DARK, theme: 'cloth' }, // 束发
+      { geo: box(0.19, 0.05, 0.2, 0, 1.835, 0.005), bone: 'Head', mat: DARK, theme: 'cloth' }, // 束发
     );
   }
   return parts;

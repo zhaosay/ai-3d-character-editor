@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
   buildBoneMap,
+  buildRestMap,
+  composeRestOffset,
   eulerXyzToQuat,
   generatePlannedTracks,
   generateProceduralTracks,
@@ -51,6 +53,52 @@ describe('procedural', () => {
     const q = eulerXyzToQuat([90, 0, 0]);
     expect(q[0]).toBeCloseTo(Math.SQRT1_2, 5);
     expect(q[3]).toBeCloseTo(Math.SQRT1_2, 5);
+  });
+
+  it('静息合成：单位元退化 + 90°自乘=180°', () => {
+    const off = composeRestOffset([0, 0, 0, 1], [90, 0, 0]);
+    expect(off[0]).toBeCloseTo(Math.SQRT1_2, 5);
+    const dbl = composeRestOffset([Math.SQRT1_2, 0, 0, Math.SQRT1_2], [90, 0, 0]);
+    expect(dbl[0]).toBeCloseTo(1, 5);
+    expect(Math.abs(dbl[3])).toBeLessThan(1e-6);
+  });
+
+  it('生成叠加静息：T-pose 手臂不再被钉到天上', () => {
+    // T-pose rest：右臂已外展 80°
+    const restQ = eulerXyzToQuat([0, 0, -80]);
+    const bones = { 'upperArm.R': 'UR', 'forearm.R': 'FR', 'upperArm.L': 'UL', 'head': 'H' } as never;
+    const rest = { 'upperArm.R': restQ } as never;
+    const { tracks } = generateProceduralTracks(bones, { prompt: '挥手', duration: 2 }, rest);
+    const ur = tracks.find((t) => t.boneName === 'UR')!;
+    // 首键 = rest ⊗ t0 偏移（seed 默认 0 → phase 0 → z 偏移 -55°）
+    const expected = composeRestOffset(restQ, [0, 0, -55]);
+    expect(ur.rotation[0].value[0]).toBeCloseTo(expected[0], 5);
+    expect(ur.rotation[0].value[3]).toBeCloseTo(expected[3], 5);
+    // 与旧绝对值（-150°）明显不同：证明相对化生效（15°旋转差 ≈ 四元数距离 0.13）
+    const absolute = eulerXyzToQuat([0, 0, -150]);
+    const dist = Math.hypot(
+      ur.rotation[0].value[0] - absolute[0],
+      ur.rotation[0].value[1] - absolute[1],
+      ur.rotation[0].value[2] - absolute[2],
+      ur.rotation[0].value[3] - absolute[3],
+    );
+    expect(dist).toBeGreaterThan(0.1);
+    // 首键贴近静息（手臂从 T-pose 适度抬起，而非被钉到天上）
+    const dot = Math.abs(
+      ur.rotation[0].value[0] * restQ[0] +
+        ur.rotation[0].value[1] * restQ[1] +
+        ur.rotation[0].value[2] * restQ[2] +
+        ur.rotation[0].value[3] * restQ[3],
+    );
+    expect(dot).toBeGreaterThan(0.8);
+  });
+
+  it('buildRestMap 从快照取静息', () => {
+    const snap = humanoidSnap();
+    const rest = buildRestMap(snap);
+    expect(rest['upperArm.R']).toHaveLength(4);
+    const n = Math.hypot(...(rest['upperArm.R'] as number[]));
+    expect(n).toBeCloseTo(1, 5);
   });
 
   it('wave 生成归一化四元数轨道', () => {

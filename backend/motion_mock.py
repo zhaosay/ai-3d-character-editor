@@ -15,8 +15,7 @@ TIME_EPS = 1e-4
 Interp = Literal["linear", "step", "cubic"]
 
 
-def euler_xyz_to_quat(x_deg: float, y_deg: float, z_deg: float) -> list[float]:
-    # 与 three.js Quaternion.setFromEuler XYZ 分支逐行一致
+def euler_xyz_to_quat(x_deg: float, y_deg: float, z_deg: float) -> list[float]:    # 与 three.js Quaternion.setFromEuler XYZ 分支逐行一致
     x, y, z = math.radians(x_deg), math.radians(y_deg), math.radians(z_deg)
     c1, s1 = math.cos(x / 2), math.sin(x / 2)
     c2, s2 = math.cos(y / 2), math.sin(y / 2)
@@ -27,6 +26,25 @@ def euler_xyz_to_quat(x_deg: float, y_deg: float, z_deg: float) -> list[float]:
         c1 * c2 * s3 + s1 * s2 * c3,
         c1 * c2 * c3 - s1 * s2 * s3,
     ]
+
+
+def quat_mul(a: list[float], b: list[float]) -> list[float]:
+    """四元数乘法 a⊗b（与 three.js Quaternion.multiply 语义一致：先作用 b）。"""
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return [
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+        aw * bw - ax * bx - ay * by - az * bz,
+    ]
+
+
+def compose_rest_offset(rest: list[float] | None, x_deg: float, y_deg: float, z_deg: float) -> list[float]:
+    """模板输出相对静息的偏移量；rest 缺失时退化为绝对欧拉。"""
+    if rest is None or len(rest) != 4:
+        return euler_xyz_to_quat(x_deg, y_deg, z_deg)
+    return quat_mul(list(rest), euler_xyz_to_quat(x_deg, y_deg, z_deg))
 
 
 KNOWN_TEMPLATES = ("wave", "bow", "march", "sword", "block", "kick", "sway")
@@ -54,17 +72,17 @@ def _schedules(template: str, phase: float):
     tau = math.pi * 2
     if template == "wave":
         return {
-            "upperArm.R": lambda t: (0, 0, -150 + 18 * math.sin(tau * (t + phase))),
-            "forearm.R": lambda t: (0, 0, -25 + 22 * math.sin(tau * (2 * t + phase))),
-            "upperArm.L": lambda t: (0, 0, -8),
+            "upperArm.R": lambda t: (0, 0, -55 + 20 * math.sin(tau * (t + phase))),
+            "forearm.R": lambda t: (0, 0, -20 + 22 * math.sin(tau * (2 * t + phase))),
+            "upperArm.L": lambda t: (0, 0, 0),
             "head": lambda t: (0, 8 * math.sin(tau * (t + phase)), 0),
         }
     if template == "bow":
         return {
             "spine": lambda t: (38 * math.sin(math.pi * t), 0, 0),
             "head": lambda t: (14 * math.sin(math.pi * t), 0, 0),
-            "upperArm.L": lambda t: (12 * math.sin(math.pi * t), 0, -6),
-            "upperArm.R": lambda t: (12 * math.sin(math.pi * t), 0, 6),
+            "upperArm.L": lambda t: (12 * math.sin(math.pi * t), 0, 0),
+            "upperArm.R": lambda t: (12 * math.sin(math.pi * t), 0, 0),
         }
     if template == "march":
         swing = lambda t, off: 26 * math.sin(tau * (2 * t + off))
@@ -73,8 +91,8 @@ def _schedules(template: str, phase: float):
             "thigh.R": lambda t: (swing(t, 0.5), 0, 0),
             "shin.L": lambda t: (max(0, -18 * math.sin(tau * (2 * t + 0.25))), 0, 0),
             "shin.R": lambda t: (max(0, -18 * math.sin(tau * (2 * t + 0.75))), 0, 0),
-            "upperArm.L": lambda t: (swing(t, 0.5) * 0.6, 0, -6),
-            "upperArm.R": lambda t: (swing(t, 0) * 0.6, 0, 6),
+            "upperArm.L": lambda t: (swing(t, 0.5) * 0.6, 0, 0),
+            "upperArm.R": lambda t: (swing(t, 0) * 0.6, 0, 0),
             "spine": lambda t: (3 * math.sin(tau * (2 * t)), 0, 0),
         }
     # 武侠单发包络（与前端 procedural.ts 同构）
@@ -84,7 +102,7 @@ def _schedules(template: str, phase: float):
             "spine": lambda t: (6 * env(t), 28 * env(t), 0),
             "upperArm.R": lambda t: (-115 * env(t), 0, -35 * env(t)),
             "forearm.R": lambda t: (-25 * env(t), 0, 0),
-            "upperArm.L": lambda t: (0, 0, -10 + 12 * env(t)),
+            "upperArm.L": lambda t: (0, 0, 12 * env(t)),
             "head": lambda t: (0, -12 * env(t), 0),
         }
     if template == "block":
@@ -103,14 +121,14 @@ def _schedules(template: str, phase: float):
             "thigh.R": lambda t: (-70 * env(t), 0, 0),
             "shin.R": lambda t: (35 * env(t) * env(t), 0, 0),
             "thigh.L": lambda t: (0, 0, 0),
-            "upperArm.L": lambda t: (-25 * env(t), 0, -6),
-            "upperArm.R": lambda t: (25 * env(t), 0, 6),
+            "upperArm.L": lambda t: (-25 * env(t), 0, 0),
+            "upperArm.R": lambda t: (25 * env(t), 0, 0),
             "spine": lambda t: (0, 12 * env(t), 0),
         }
     return {
         "spine": lambda t: (0, 0, 5 * math.sin(tau * (t + phase))),
-        "upperArm.L": lambda t: (0, 0, -8 + 6 * math.sin(tau * (t + phase))),
-        "upperArm.R": lambda t: (0, 0, 8 - 6 * math.sin(tau * (t + phase))),
+        "upperArm.L": lambda t: (0, 0, 6 * math.sin(tau * (t + phase))),
+        "upperArm.R": lambda t: (0, 0, -6 * math.sin(tau * (t + phase))),
         "head": lambda t: (0, 0, -4 * math.sin(tau * (t + phase))),
     }
 
@@ -133,18 +151,20 @@ def plan_prompt(prompt: str, duration: float) -> list[dict]:
     return segs
 
 
-def _sample_segment(sched: dict, t0: float, t1: float, seed: int) -> dict[str, list]:
-    """单段采样：局部 t∈[0,1] → 全局时间键。返回 {semantic: [keys]}。"""
+def _sample_segment(sched: dict, t0: float, t1: float, seed: int, rest: dict[str, list] | None = None) -> dict[str, list]:
+    """单段采样：局部 t∈[0,1] → 全局时间键。模板为偏移量，与各骨骼 rest 合成。"""
+    rest = rest or {}
     span = max(t1 - t0, 1e-6)
     keys: dict[str, list] = {}
     n = max(2, int(span / STEP) + 1)
     for semantic, fn in sched.items():
         ks = []
+        rq = rest.get(semantic)
         for i in range(n):
             time = min(t0 + i * STEP, t1)
-            ks.append({"time": round(time, 3), "value": euler_xyz_to_quat(*fn((time - t0) / span)), "interp": "linear"})
+            ks.append({"time": round(time, 3), "value": compose_rest_offset(rq, *fn((time - t0) / span)), "interp": "linear"})
         if ks[-1]["time"] < t1 - TIME_EPS:
-            ks.append({"time": t1, "value": euler_xyz_to_quat(*fn(1.0)), "interp": "linear"})
+            ks.append({"time": t1, "value": compose_rest_offset(rq, *fn(1.0)), "interp": "linear"})
         keys[semantic] = ks
     return keys
 
@@ -163,7 +183,7 @@ def _maybe_mirror_wave(sched: dict, bones: dict[str, str], warnings: list) -> di
 
 
 def generate_tracks_planned(
-    bones: dict[str, str], segments: list[dict], duration: float, seed: int = 0
+    bones: dict[str, str], segments: list[dict], duration: float, seed: int = 0, rest: dict[str, list] | None = None
 ) -> tuple[list[str], list[dict], list[str]]:
     """多段合成：各段独立采样后按骨骼合并，边界重合时间去重（保留后者，保证衔接）。"""
     warnings: list[str] = []
@@ -179,7 +199,7 @@ def generate_tracks_planned(
         if template == "sway" and str(seg.get("clause", "")).strip():
             warnings.append(f"子句“{seg.get('clause')}”未识别关键词，已用站立摇摆占位")
         sched = _maybe_mirror_wave(_schedules(template, phase), bones, warnings)
-        for semantic, ks in _sample_segment(sched, float(seg["t0"]), float(seg["t1"]), seed).items():
+        for semantic, ks in _sample_segment(sched, float(seg["t0"]), float(seg["t1"]), seed, rest).items():
             bone = bones.get(semantic)
             if not bone:
                 warnings.append(f"缺少 {semantic}，已跳过")
