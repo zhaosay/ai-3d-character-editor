@@ -4,7 +4,7 @@ import { Grid, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useCharacterStore } from '../../stores/characterStore';
 import { useViewportStore } from '../../stores/viewportStore';
-import { FpsMeter, HighlightSync, SkeletonOverlay } from './SceneSync';
+import { FpsMeter, HighlightSync, SkeletonOverlay, EnvAndTone } from './SceneSync';
 import { PlaybackEngine } from './PlaybackEngine';
 import { IKHandles, IKSolver } from './IKHandles';
 
@@ -25,20 +25,30 @@ export function ViewportCanvas() {
   const gridCell = useViewportStore((s) => s.gridCell);
   const gridSection = useViewportStore((s) => s.gridSection);
   const shadowOpacity = useViewportStore((s) => s.shadowOpacity);
+  const keyIntensity = useViewportStore((s) => s.keyIntensity);
+  const fillIntensity = useViewportStore((s) => s.fillIntensity);
+  const rimIntensity = useViewportStore((s) => s.rimIntensity);
+  const hemiIntensity = useViewportStore((s) => s.hemiIntensity);
   const sceneObject = useCharacterStore((s) => s.sceneObject);
 
   return (
     <div className="relative h-full w-full bg-white">
       <Canvas shadows={shadows} camera={{ position: [2.5, 1.8, 3.2], fov: 45 }} dpr={[1, 2]}>
         <color attach="background" args={['#ffffff']} />
-        <hemisphereLight intensity={0.9} />
+        <hemisphereLight intensity={hemiIntensity} />
+        {/* 主光（投影） */}
         <directionalLight
-          position={[4, 6, 3]}
-          intensity={1.6}
+          position={[3.5, 5, 2.5]}
+          intensity={keyIntensity}
           castShadow={shadows}
           shadow-mapSize-width={2048}
           shadow-mapSize-height={2048}
         />
+        {/* 补光（左侧弱） */}
+        <directionalLight position={[-4, 2, 1.5]} intensity={fillIntensity} />
+        {/* 轮廓光（脑后） */}
+        <directionalLight position={[-1.5, 3.5, -4]} intensity={rimIntensity} />
+        <EnvAndTone />
         <Suspense fallback={null}>
           <CharacterPrimitive />
         </Suspense>

@@ -32,6 +32,12 @@ export function ThemePanel() {
   const setGridSection = useViewportStore((s) => s.setGridSection);
   const shadowOpacity = useViewportStore((s) => s.shadowOpacity);
   const setShadowOpacity = useViewportStore((s) => s.setShadowOpacity);
+  const setExposure = useViewportStore((s) => s.setExposure);
+  const setEnvIntensity = useViewportStore((s) => s.setEnvIntensity);
+  const setKeyIntensity = useViewportStore((s) => s.setKeyIntensity);
+  const setFillIntensity = useViewportStore((s) => s.setFillIntensity);
+  const setRimIntensity = useViewportStore((s) => s.setRimIntensity);
+  const setHemiIntensity = useViewportStore((s) => s.setHemiIntensity);
 
   const themable = !!sceneObject && isThemable(sceneObject);
 
@@ -73,6 +79,12 @@ export function ThemePanel() {
     setGridCell('#d9dfe7');
     setGridSection('#a9b4c2');
     setShadowOpacity(0.35);
+    setExposure(1.0);
+    setEnvIntensity(0.45);
+    setKeyIntensity(2.0);
+    setFillIntensity(0.5);
+    setRimIntensity(1.2);
+    setHemiIntensity(0.5);
     setError(null);
   };
 

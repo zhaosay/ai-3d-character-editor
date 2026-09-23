@@ -46,6 +46,8 @@ describe('procedural', () => {
     expect(pickTemplate('挥剑斩')).toBe('sword');
     expect(pickTemplate('格挡防御')).toBe('block');
     expect(pickTemplate('踢腿')).toBe('kick');
+    expect(pickTemplate('呼吸')).toBe('breath');
+    expect(pickTemplate('待机')).toBe('breath');
     expect(pickTemplate('qwerty')).toBe('sway');
   });
 

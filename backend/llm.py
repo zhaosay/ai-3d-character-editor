@@ -13,10 +13,10 @@ import os
 
 import httpx
 
-ALLOWED = ("wave", "bow", "march", "sword", "block", "kick", "sway")
+ALLOWED = ("wave", "bow", "march", "sword", "block", "kick", "breath", "sway")
 
 SYSTEM = """You split a character-action description into ordered motion segments.
-Reply with ONLY a JSON object: {"segments": [{"template": "wave|bow|march|sword|block|kick|sway", "span": <seconds:number>, "note": "<short>"}]}
+Reply with ONLY a JSON object: {"segments": [{"template": "wave|bow|march|sword|block|kick|breath|sway", "span": <seconds:number>, "note": "<short>"}]}
 Rules: keep input order; spans sum roughly to the given duration; unknown actions -> "sway". No prose."""
 
 

@@ -47,7 +47,7 @@ def compose_rest_offset(rest: list[float] | None, x_deg: float, y_deg: float, z_
     return quat_mul(list(rest), euler_xyz_to_quat(x_deg, y_deg, z_deg))
 
 
-KNOWN_TEMPLATES = ("wave", "bow", "march", "sword", "block", "kick", "sway")
+KNOWN_TEMPLATES = ("wave", "bow", "march", "sword", "block", "kick", "breath", "sway")
 
 
 def pick_template(prompt: str) -> str:
@@ -59,6 +59,8 @@ def pick_template(prompt: str) -> str:
         return "block"
     if any(k in p for k in ("kick",)) or any(k in prompt for k in ("踢", "扫腿", "鞭腿")):
         return "kick"
+    if any(k in p for k in ("idle", "breath")) or any(k in prompt for k in ("呼吸", "待机")):
+        return "breath"
     if any(k in p for k in ("wave", "hello")) or any(k in prompt for k in ("挥", "抬手", "招手")):
         return "wave"
     if any(k in p for k in ("bow", "nod")) or any(k in prompt for k in ("鞠", "躬", "点头")):
@@ -124,6 +126,15 @@ def _schedules(template: str, phase: float):
             "upperArm.L": lambda t: (-25 * env(t), 0, 0),
             "upperArm.R": lambda t: (25 * env(t), 0, 0),
             "spine": lambda t: (0, 12 * env(t), 0),
+        }
+    if template == "breath":
+        # 待机呼吸：每段一次缓慢起伏（4s 段 ≈ 15 次/分）
+        b = lambda t: math.sin(tau * t)
+        return {
+            "spine": lambda t: (1.2 * b(t), 0, 0),
+            "chest": lambda t: (2.0 * b(t), 0, 0),
+            "upperArm.L": lambda t: (0.8 * b(t), 0, 0),
+            "upperArm.R": lambda t: (0.8 * b(t), 0, 0),
         }
     return {
         "spine": lambda t: (0, 0, 5 * math.sin(tau * (t + phase))),

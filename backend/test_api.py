@@ -86,6 +86,7 @@ def test_generate_wuxia_templates():
         ("拔剑", "sword", "ArmR"),
         ("格挡", "block", "ForeL"),
         ("踢腿", "kick", "LegR"),
+        ("呼吸", "breath", "Spine"),
     ):
         r = client.post(
             "/motion/generate",

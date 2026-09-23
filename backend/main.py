@@ -54,7 +54,7 @@ class AnimationData(BaseModel):
 class PlanSegment(BaseModel):
     t0: float
     t1: float
-    template: Literal["wave", "bow", "march", "sword", "block", "kick", "sway"]
+    template: Literal["wave", "bow", "march", "sword", "block", "kick", "breath", "sway"]
     clause: str = ""
 
 

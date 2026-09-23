@@ -56,6 +56,7 @@ export function pickTemplate(prompt: string): string {
   if (/踢|扫腿|鞭腿|kick/.test(p)) return 'kick';
   if (/挥|抬手|招手|wave|hello|hi\b/.test(p)) return 'wave';
   if (/鞠|躬|bow|点头|nod/.test(p)) return 'bow';
+  if (/呼吸|待机|idle|breath/.test(p)) return 'breath';
   if (/踏步|走|跑|march|walk|run/.test(p)) return 'march';
   return 'sway';
 }
@@ -123,6 +124,16 @@ function schedules(template: string, phase: number): Schedule {
         'spine': (t) => [0, 12 * env(t), 0],
       };
     }
+    case 'breath': {
+      // 待机呼吸：每段一次缓慢起伏（4s 段 ≈ 15 次/分）
+      const b = (t: number) => Math.sin(TAU * t);
+      return {
+        'spine': (t) => [1.2 * b(t), 0, 0],
+        'chest': (t) => [2.0 * b(t), 0, 0],
+        'upperArm.L': (t) => [0.8 * b(t), 0, 0],
+        'upperArm.R': (t) => [0.8 * b(t), 0, 0],
+      };
+    }
     default:
       return {
         'spine': (t) => [0, 0, 5 * Math.sin(TAU * (t + phase))],
@@ -156,7 +167,7 @@ export function planClauses(prompt: string, duration: number): PlanSegment[] {
 
 const TIME_EPS = 1e-4;
 
-const KNOWN_TEMPLATES = ['wave', 'bow', 'march', 'sword', 'block', 'kick', 'sway'];
+const KNOWN_TEMPLATES = ['wave', 'bow', 'march', 'sword', 'block', 'kick', 'breath', 'sway'];
 
 export function isKnownTemplate(t: string): boolean {
   return KNOWN_TEMPLATES.includes(t);

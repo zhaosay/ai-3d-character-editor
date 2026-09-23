@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { CharacterMeta } from '../../types/global';
+import { buildRigged, disposeRigged, type RigPartSpec } from '../../core/rig/skinnedRig';
 
 /**
  * 程序化示例角色「武侠人物」男女两版（REAL，无外部文件）。
@@ -80,13 +81,7 @@ function boneSpecs(P: GenderParams): BoneSpec[] {
   ];
 }
 
-interface PartSpec {
-  geo: THREE.BufferGeometry;
-  bone: string;
-  mat: THREE.Material;
-  /** 主题分组：体表(skin) / 服饰发饰(skin 以外) */
-  theme: 'skin' | 'cloth';
-}
+type PartSpec = RigPartSpec;
 
 function box(w: number, h: number, d: number, x: number, y: number, z: number): THREE.BufferGeometry {
   const g = new THREE.BoxGeometry(w, h, d);
@@ -184,57 +179,11 @@ export function buildDemoCharacter(gender: DemoGender = 'male'): DemoCharacter {
     ...legParts(P, 1),
     ...legParts(P, -1),
   ];
-  const scene = new THREE.Group();
-  scene.name = gender === 'female' ? 'DemoWuxiaFemale' : 'DemoWuxiaMale';
-
-  const bones = new Map<string, THREE.Bone>();
-  for (const spec of specs) {
-    const b = new THREE.Bone();
-    b.name = spec.name;
-    b.position.fromArray(spec.pos);
-    bones.set(spec.name, b);
-    if (spec.parent) bones.get(spec.parent)!.add(b);
-    else scene.add(b);
-  }
-  scene.updateMatrixWorld(true);
-  const ordered = specs.map((s) => bones.get(s.name)!);
-  const indexOf = new Map(ordered.map((b, i) => [b.name, i]));
-  const skeleton = new THREE.Skeleton(ordered);
-
-  // 材质按角色实例克隆（换肤不污染模板，dispose 时一并释放）
-  const matClones = new Map<THREE.Material, THREE.Material>();
-  const cloneOf = (m: THREE.Material) => {
-    let c = matClones.get(m);
-    if (!c) {
-      c = m.clone();
-      matClones.set(m, c);
-    }
-    return c;
-  };
-
-  const geometries: THREE.BufferGeometry[] = [];
-  for (const part of PARTS) {
-    const geo = part.geo;
-    geometries.push(geo);
-    const count = geo.attributes['position'].count;
-    const si = new Uint16Array(count * 4);
-    const sw = new Float32Array(count * 4);
-    const bi = indexOf.get(part.bone)!;
-    for (let i = 0; i < count; i++) {
-      si[i * 4] = bi;
-      sw[i * 4] = 1;
-    }
-    geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
-    geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
-    const mesh = new THREE.SkinnedMesh(geo, cloneOf(part.mat));
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData['themePart'] = part.theme;
-    mesh.bind(skeleton);
-    mesh.normalizeSkinWeights();
-    scene.add(mesh);
-  }
-  scene.updateMatrixWorld(true);
+  const scene = buildRigged(
+    gender === 'female' ? 'DemoWuxiaFemale' : 'DemoWuxiaMale',
+    specs.map((s) => ({ name: s.name, parent: s.parent, pos: s.pos })),
+    PARTS,
+  ).scene;
   scene.userData['themable'] = true;
 
   const meta: CharacterMeta = {
@@ -244,18 +193,7 @@ export function buildDemoCharacter(gender: DemoGender = 'male'): DemoCharacter {
     gltfInfo: { meshes: PARTS.length, materials: 3, bones: specs.length, hasSkin: true, hasAnimations: 0 },
   };
 
-  const dispose = () => {
-    const mats = new Set<THREE.Material>();
-    scene.traverse((o) => {
-      const mesh = o as THREE.SkinnedMesh;
-      if (mesh.isSkinnedMesh) {
-        mesh.geometry.dispose();
-        const mm = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        mm.forEach((m) => mats.add(m as THREE.Material));
-      }
-    });
-    mats.forEach((m) => m.dispose());
-  };
+  const dispose = () => disposeRigged(scene);
 
   return { scene, meta, dispose };
 }

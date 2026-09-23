@@ -3,6 +3,48 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useViewportStore } from '../../stores/viewportStore';
 import { useSelectionStore } from '../../stores/selectionStore';
+import { buildPreviewEnv } from '../../core/render/previewEnv';
+
+/** 写实预览：内置环境反射 + ACES 色调映射 + 曝光（viewer 侧，不导出）。 */
+export function EnvAndTone() {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const exposure = useViewportStore((s) => s.exposure);
+  const envIntensity = useViewportStore((s) => s.envIntensity);
+
+  const envRT = useMemo(() => {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const rt = pmrem.fromScene(buildPreviewEnv(), 0.04);
+    pmrem.dispose();
+    return rt;
+  }, [gl]);
+
+  useEffect(() => {
+    gl.toneMapping = THREE.ACESFilmicToneMapping;
+    return () => {
+      gl.toneMapping = THREE.NoToneMapping;
+    };
+  }, [gl]);
+
+  useEffect(() => {
+    gl.toneMappingExposure = exposure;
+  }, [gl, exposure]);
+
+  useEffect(() => {
+    const prevEnv = scene.environment;
+    const prevInt = scene.environmentIntensity;
+    scene.environment = envRT.texture;
+    scene.environmentIntensity = envIntensity;
+    return () => {
+      scene.environment = prevEnv;
+      scene.environmentIntensity = prevInt;
+    };
+  }, [scene, envRT, envIntensity]);
+
+  useEffect(() => () => envRT.dispose(), [envRT]);
+
+  return null;
+}
 
 function setSubtreeEmissive(root: THREE.Object3D, hex: number) {
   root.traverse((o) => {

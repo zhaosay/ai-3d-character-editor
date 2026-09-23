@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dropzone } from '../character/Dropzone';
+import { SketchRig } from '../character/SketchRig';
 import { SkeletonTree } from '../skeleton/SkeletonTree';
 import { ViewportCanvas } from '../viewport/ViewportCanvas';
 import { ViewportHUD } from '../viewport/ViewportHUD';
 import { ScrubApplier } from '../viewport/PlaybackEngine';
 import { BoneDetails } from '../inspector/BoneDetails';
 import { ThemePanel } from '../inspector/ThemePanel';
+import { RenderPanel } from '../inspector/RenderPanel';
+import { FacePanel } from '../inspector/FacePanel';
 import { TransformPanel } from '../inspector/TransformPanel';
 import { IKPanel } from '../inspector/IKPanel';
 import { AutoPosePanel } from '../inspector/AutoPosePanel';
@@ -173,6 +176,7 @@ export function EditorShell() {
           <div className="border-b border-zinc-200 p-2">
             <Dropzone compact />
           </div>
+          <SketchRig />
           <div className="border-b border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-600">Skeleton Explorer</div>
           <div className="min-h-0 flex-1">
             <SkeletonTree />
@@ -198,8 +202,10 @@ export function EditorShell() {
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
-              <ThemePanel />
-              <TransformPanel />
+            <ThemePanel />
+            <RenderPanel />
+            <FacePanel />
+            <TransformPanel />
               <IKPanel />
               <AutoPosePanel />
               <MotionPanel />
