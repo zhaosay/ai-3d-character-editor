@@ -47,10 +47,32 @@ const MIXAMO_FALLBACK: Array<{ re: RegExp; semantic: HumanoidSemantic }> = [
   { re: /head\d*$/i, semantic: 'head' },
 ];
 
+// CesiumMan（Khronos glTF-Sample-Assets，层级精确命名）
+const CESIUM_RULES: Array<{ re: RegExp; semantic: HumanoidSemantic }> = [
+  { re: /torso_joint_1$/i, semantic: 'hips' },
+  { re: /torso_joint_2$/i, semantic: 'spine' },
+  { re: /torso_joint_3$/i, semantic: 'chest' },
+  { re: /neck_joint_1$/i, semantic: 'neck' },
+  { re: /neck_joint_2$/i, semantic: 'head' },
+  { re: /leg_joint_l_1$/i, semantic: 'thigh.L' },
+  { re: /leg_joint_r_1$/i, semantic: 'thigh.R' },
+  { re: /leg_joint_l_2$/i, semantic: 'shin.L' },
+  { re: /leg_joint_r_2$/i, semantic: 'shin.R' },
+  { re: /leg_joint_l_3$/i, semantic: 'foot.L' },
+  { re: /leg_joint_r_3$/i, semantic: 'foot.R' },
+  { re: /arm_joint_l__4_$/i, semantic: 'upperArm.L' },
+  { re: /arm_joint_r$/i, semantic: 'upperArm.R' },
+  { re: /arm_joint_l__3_$/i, semantic: 'forearm.L' },
+  { re: /arm_joint_r__2_$/i, semantic: 'forearm.R' },
+  { re: /arm_joint_l__2_$/i, semantic: 'hand.L' },
+  { re: /arm_joint_r__3_$/i, semantic: 'hand.R' },
+];
+
 /** 名称模糊匹配，失败返回 null（UI 显示"未映射"，不阻塞）。 */
 export function guessSemantic(boneName: string): HumanoidSemantic | null {
   const normalized = boneName.replace(/^mixamorig[:_]?/i, '');
   for (const r of RULES) if (r.re.test(boneName) || r.re.test(normalized)) return r.semantic;
   for (const r of MIXAMO_FALLBACK) if (r.re.test(normalized)) return r.semantic;
+  for (const r of CESIUM_RULES) if (r.re.test(boneName)) return r.semantic;
   return null;
 }

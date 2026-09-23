@@ -1,12 +1,15 @@
-# Samples（不内置版权模型）
+# Samples
 
-P1 验证用公开 GLB（浏览器打开链接下载后拖入编辑器）：
+## 内置（随构建发布，离线一键加载）
 
-1. Khronos Sample — Cesium_Man / Fox（带骨骼）：
-   https://github.com/KhronosGroup/glTF-Sample-Models
-2. Quaternius（CC0 免费角色，含人形骨骼）：
-   https://quaternius.com/packs/ultimatemodularcharacter.html
-3. Mixamo（需 Adobe 账号免费下载，导出 GLB/FBX→转GLB）：
-   https://www.mixamo.com/
+- `CesiumMan.glb` — Cesium Man by Cesium（**CC-BY-4.0**，见 ATTRIBUTION.md）， textured 真人，18 关节全语义映射，自带 1 段动画（仅展示计数，时间轴用自有关键帧）
 
-> 武侠风 Demo 在 P2 后接入，先用以上任意带骨骼 GLB 验证 Viewer + Skeleton。
+## 在线一键加载（运行时下载，本仓库不做分发）
+
+- Soldier（Mixamo 骨架真人士兵，经 jsDelivr）：编辑器左侧"真人男"按钮
+- Ready Player Me：去 demo.readyplayer.me 免费捏真人（男/女自选），复制 `.glb` 链接粘贴到"RPM 链接"行加载
+
+## 其他公开来源（下载后拖入）
+
+- Quaternius（CC0）：https://quaternius.com/packs/ultimatemodularcharacter.html
+- Mixamo（需 Adobe 账号）：https://www.mixamo.com/

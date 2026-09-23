@@ -149,6 +149,8 @@ function torsoParts(P: GenderParams, gender: DemoGender): PartSpec[] {
     { geo: cylinder(0.05, 0.058, 0.12, 0, 1.53, 0), bone: 'Neck', mat: P.body, theme: 'skin' },
     { geo: sphere(0.115, 0, 1.7, 0.01, 0.92, 1.08, 0.95), bone: 'Head', mat: P.body, theme: 'skin' },
     { geo: box(0.03, 0.05, 0.035, 0, 1.685, 0.115), bone: 'Head', mat: P.body, theme: 'skin' }, // 鼻
+    { geo: sphere(0.016, 0.042, 1.715, 0.1), bone: 'Head', mat: DARK, theme: 'cloth' }, // 眼
+    { geo: sphere(0.016, -0.042, 1.715, 0.1), bone: 'Head', mat: DARK, theme: 'cloth' },
     { geo: box(0.21, 0.055, 0.21, 0, 1.75, 0.005), bone: 'Head', mat: P.accent, theme: 'cloth' }, // 抹额
   ];
   if (gender === 'female') {

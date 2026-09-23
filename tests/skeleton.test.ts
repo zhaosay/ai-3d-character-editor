@@ -62,4 +62,31 @@ describe('humanoidMap', () => {
   it('未知命名返回null', () => {
     expect(guessSemantic('SomeProp_Bone_01')).toBeNull();
   });
+
+  it('CesiumMan 命名精确映射（含左右）', () => {
+    expect(guessSemantic('Skeleton_torso_joint_1')).toBe('hips');
+    expect(guessSemantic('Skeleton_torso_joint_2')).toBe('spine');
+    expect(guessSemantic('torso_joint_3')).toBe('chest');
+    expect(guessSemantic('Skeleton_neck_joint_1')).toBe('neck');
+    expect(guessSemantic('Skeleton_neck_joint_2')).toBe('head');
+    expect(guessSemantic('leg_joint_L_1')).toBe('thigh.L');
+    expect(guessSemantic('leg_joint_R_1')).toBe('thigh.R');
+    expect(guessSemantic('leg_joint_L_2')).toBe('shin.L');
+    expect(guessSemantic('leg_joint_R_2')).toBe('shin.R');
+    expect(guessSemantic('leg_joint_L_3')).toBe('foot.L');
+    expect(guessSemantic('leg_joint_R_3')).toBe('foot.R');
+    expect(guessSemantic('leg_joint_R_5')).toBeNull(); // 脚趾： intentionally unmapped
+    expect(guessSemantic('Skeleton_arm_joint_R')).toBe('upperArm.R');
+    expect(guessSemantic('Skeleton_arm_joint_L__4_')).toBe('upperArm.L');
+    expect(guessSemantic('Skeleton_arm_joint_R__2_')).toBe('forearm.R');
+    expect(guessSemantic('Skeleton_arm_joint_L__3_')).toBe('forearm.L');
+    expect(guessSemantic('Skeleton_arm_joint_R__3_')).toBe('hand.R');
+    expect(guessSemantic('Skeleton_arm_joint_L__2_')).toBe('hand.L');
+  });
+
+  it('CesiumMan 规则不误伤既有命名', () => {
+    expect(guessSemantic('mixamorigLeftArm')).toBe('upperArm.L');
+    expect(guessSemantic('mixamorig:RightLeg')).toBe('shin.R');
+    expect(guessSemantic('Hips')).toBe('hips');
+  });
 });
