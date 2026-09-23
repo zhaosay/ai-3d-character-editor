@@ -9,6 +9,7 @@ import { BoneDetails } from '../inspector/BoneDetails';
 import { ThemePanel } from '../inspector/ThemePanel';
 import { RenderPanel } from '../inspector/RenderPanel';
 import { FacePanel } from '../inspector/FacePanel';
+import { IdlePanel } from '../ai/IdlePanel';
 import { TransformPanel } from '../inspector/TransformPanel';
 import { IKPanel } from '../inspector/IKPanel';
 import { AutoPosePanel } from '../inspector/AutoPosePanel';
@@ -205,13 +206,14 @@ export function EditorShell() {
             <ThemePanel />
             <RenderPanel />
             <FacePanel />
+            <IdlePanel />
             <TransformPanel />
               <IKPanel />
               <AutoPosePanel />
               <MotionPanel />
-              <InbetweenPanel />
-              <PhysicsPanel />
-              <BoneDetails />
+            <InbetweenPanel />
+            <PhysicsPanel />
+            <BoneDetails />
             </div>
           </aside>
         ) : (

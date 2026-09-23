@@ -62,3 +62,24 @@ export function resetMorphs(root: THREE.Object3D): number {
   });
   return n;
 }
+
+/** 眨眼目标名匹配（ARKit eyeBlink* 及常见命名）。 */
+const BLINK_PATTERNS = [/blink/i, /eyes?\s*clos/i, /eyelid/i];
+
+export function findBlinkTargets(list: MorphTarget[]): MorphTarget[] {
+  return list.filter((m) => BLINK_PATTERNS.some((re) => re.test(m.name)));
+}
+
+export const BLINK_PERIOD = 3.7;
+const BLINK_START = 0.86;
+const BLINK_LEN = 0.11;
+
+/**
+ * 确定性眨眼权重（wall-clock 秒）：每 3.7s 一次、0.4s 内闭合再睁开。
+ * 纯函数，可单测；同一 t 恒返回同一值。
+ */
+export function blinkWeight(timeSec: number): number {
+  const phase = ((timeSec % BLINK_PERIOD) + BLINK_PERIOD) % BLINK_PERIOD / BLINK_PERIOD;
+  if (phase < BLINK_START || phase > BLINK_START + BLINK_LEN) return 0;
+  return Math.sin(((phase - BLINK_START) / BLINK_LEN) * Math.PI);
+}

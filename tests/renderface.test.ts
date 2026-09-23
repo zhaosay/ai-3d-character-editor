@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { useViewportStore } from '../src/stores/viewportStore';
 import { buildPreviewEnv } from '../src/core/render/previewEnv';
-import { hasMorphTargets, listMorphTargets, resetMorphs, setMorphInfluence } from '../src/core/face/morphs';
+import { hasMorphTargets, listMorphTargets, resetMorphs, setMorphInfluence, findBlinkTargets, blinkWeight, BLINK_PERIOD } from '../src/core/face/morphs';
 
 describe('render store 钳制', () => {
   it('曝光/灯光越界钳制，非法值回退', () => {
@@ -70,5 +70,26 @@ describe('face morphs', () => {
     expect(() => setMorphInfluence(g, 'nope', 0, 0.5)).toThrow(/无 morph/);
     expect(resetMorphs(g)).toBe(2);
     expect(listMorphTargets(g).every((m) => m.value === 0)).toBe(true);
+  });
+});
+
+describe('blink', () => {
+  it('目标匹配 ARKit 命名', () => {
+    const targets = [
+      { meshUuid: 'a', meshName: 'Head', index: 0, name: 'eyeBlinkLeft', value: 0 },
+      { meshUuid: 'a', meshName: 'Head', index: 1, name: 'eyeBlinkRight', value: 0 },
+      { meshUuid: 'a', meshName: 'Head', index: 2, name: 'mouthSmile', value: 0 },
+    ];
+    const found = findBlinkTargets(targets);
+    expect(found.map((f) => f.name).sort()).toEqual(['eyeBlinkLeft', 'eyeBlinkRight']);
+  });
+
+  it('确定性时序：周期峰值≈1，其余为 0', () => {
+    expect(blinkWeight(0)).toBe(0);
+    expect(blinkWeight(1)).toBe(0);
+    const peak = BLINK_PERIOD * (0.86 + 0.11 / 2);
+    expect(blinkWeight(peak)).toBeCloseTo(1, 5);
+    expect(blinkWeight(peak)).toBe(blinkWeight(peak + BLINK_PERIOD));
+    expect(blinkWeight(-1)).toBe(blinkWeight(BLINK_PERIOD - 1));
   });
 });

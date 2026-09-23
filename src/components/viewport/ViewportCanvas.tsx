@@ -6,6 +6,7 @@ import { useCharacterStore } from '../../stores/characterStore';
 import { useViewportStore } from '../../stores/viewportStore';
 import { FpsMeter, HighlightSync, SkeletonOverlay, EnvAndTone } from './SceneSync';
 import { PlaybackEngine } from './PlaybackEngine';
+import { BlinkApplier } from './BlinkApplier';
 import { IKHandles, IKSolver } from './IKHandles';
 
 function CharacterPrimitive() {
@@ -70,6 +71,7 @@ export function ViewportCanvas() {
         <OrbitControls makeDefault target={[0, 1, 0]} />
         <FpsMeter />
         <PlaybackEngine />
+        <BlinkApplier />
         <IKSolver />
         <IKHandles />
         <HighlightSync sceneObject={sceneObject} />
