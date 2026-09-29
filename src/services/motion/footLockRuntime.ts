@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { useFootLockStore } from '../../stores/footLockStore';
+import { fieldFromSteps, useFootLockStore } from '../../stores/footLockStore';
 import { applyIKChain } from '../../core/ik/applyIK';
 import { indexBonesByName } from '../../core/animation/applyPose';
 import {
@@ -54,10 +54,6 @@ export class FootLockRuntime {
     this.cacheTime = Number.NaN;
   }
 
-  setConfig(config: FootLockConfig) {
-    this.config = config;
-  }
-
   /**
    * 对给定根对象求解足部锁定。返回本帧累计打滑（米）。
    * 必须在 applySampledPose 之后调用（依赖 FK 后的世界位置）。
@@ -66,6 +62,13 @@ export class FootLockRuntime {
     this.rewindIfNeeded(time);
     if (this.runtimes.size === 0) return 0;
     if (time === this.cacheTime) return this.cacheSlip;
+
+    // store 里有台阶时以 store 为准（场景可编辑）；否则保留构造时传入的场。
+    // 不能无条件用 store.config 覆盖 —— 那样会丢掉调用方显式传入的 field。
+    const st = useFootLockStore.getState();
+    if (st.steps.length > 0) {
+      this.config = { ...this.config, field: fieldFromSteps(st.steps, st.config.groundY) };
+    }
 
     const bones = indexBonesByName(root);
     for (const chain of this.chains) {

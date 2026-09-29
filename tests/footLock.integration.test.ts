@@ -7,7 +7,8 @@ import { detectIKChains } from '../src/core/ik/chains';
 import { sampleAnimation } from '../src/core/animation/sampler';
 import { applySampledPose, indexBonesByName } from '../src/core/animation/applyPose';
 import { FootLockRuntime } from '../src/services/motion/footLockRuntime';
-import { DEFAULT_FOOT_LOCK, footSolePosition, measureSoleDrop, resolveFootRig } from '../src/core/ik/footLock';
+import { DEFAULT_FOOT_LOCK, footSolePosition, measureSoleDrop, resolveFootRig, updateFootState } from '../src/core/ik/footLock';
+import { GroundField } from '../src/core/world/ground';
 import type { AnimationData } from '../src/core/animation/types';
 
 function walkScene() {
@@ -193,5 +194,93 @@ describe('足部锁定端到端（真实骨骼）', () => {
     const empty = new THREE.Group();
     const runtime = new FootLockRuntime([], DEFAULT_FOOT_LOCK);
     expect(runtime.solve(empty, 0, 1 / 30)).toBe(0);
+  });
+});
+
+describe('足部锁定 · 台阶地面投射', () => {
+  it('落点吸附到台阶顶面而非基准平面', () => {
+    const { scene, anim, chains, actor } = walkScene();
+    try {
+      const step = { id: 's1', center: [0, 0.15, 0.6] as const, size: [2, 0.3, 1.2] as const };
+      const field = new GroundField({ groundY: 0, boxes: [step] });
+      expect(field.sample(0, 0.6, 0.2).height).toBeCloseTo(0.3, 6);
+
+      const runtime = new FootLockRuntime(chains, { ...DEFAULT_FOOT_LOCK, maxCorrection: 5, field });
+      const bones = indexBonesByName(scene);
+      const drop = measureSoleDrop(scene, resolveFootRig(scene, chains.find((c) => c.id === 'leg.L')!)!.foot);
+      const foot = bones.get('Foot_L')!;
+      let onStep = 0;
+      for (let i = 0; i <= 90; i++) {
+        const t = i / 30;
+        applySampledPose(scene, sampleAnimation(anim, t));
+        scene.updateWorldMatrix(true, true);
+        runtime.solve(scene, t, 1 / 30);
+        scene.updateWorldMatrix(true, true);
+        const p = footSolePosition(foot, drop, new THREE.Vector3());
+        // 脚落在台阶区域内时，应被吸附到 0.3 附近
+        if (p.z > 0.05 && p.z < 1.15 && p.y < 0.2) onStep = Math.max(onStep, 1);
+      }
+      expect(onStep).toBe(1);
+    } finally {
+      actor.dispose();
+    }
+  });
+
+  it('高度场存在时 updateFootState 用支撑面高度而非 groundY', () => {
+    const field = new GroundField({
+      groundY: 0,
+      boxes: [{ id: 'p', center: [0, 0.25, 0] as const, size: [2, 0.5, 2] as const }],
+    });
+    const cfg = { ...DEFAULT_FOOT_LOCK, field };
+    const s = updateFootState({ side: 'L', planted: false, anchor: null, correction: 0, abandoned: 0 }, new THREE.Vector3(0, 0.3, 0), cfg);
+    expect(s.anchor).not.toBeNull();
+    expect(s.anchor![1]).toBeCloseTo(0.5, 6);
+  });
+
+  it('无高度场时行为不变（退回 groundY）', () => {
+    const s = updateFootState({ side: 'L', planted: false, anchor: null, correction: 0, abandoned: 0 }, new THREE.Vector3(0, 0.01, 0), DEFAULT_FOOT_LOCK);
+    expect(s.anchor![1]).toBeCloseTo(0, 6);
+  });
+});
+
+describe('足部锁定 · 垂直下沉（下蹲穿地修复）', () => {
+  /** 干净实例上采样整段动画的脚底最低点。 */
+  function measure(tpl: string, lock: boolean): number {
+    const actor = buildDemoCharacter('male');
+    try {
+      const snap = buildSkeletonTree(actor.scene);
+      const r = generatePlannedTracks(
+        buildBoneMap(snap), [{ t0: 0, t1: 3, template: tpl, clause: tpl }], 3, 0,
+        buildRestMap(snap), buildRestPositionMap(snap),
+      );
+      const anim = { id: 'a', name: 'a', duration: 3, fps: 30, tracks: r.tracks } as AnimationData;
+      const chains = detectIKChains(snap);
+      const bones = indexBonesByName(actor.scene);
+      const runtime = lock ? new FootLockRuntime(chains, { ...DEFAULT_FOOT_LOCK, maxCorrection: 5 }) : null;
+      const feet = (['L', 'R'] as const).map((side) => {
+        const chain = chains.find((c) => c.id === `leg.${side}`)!;
+        return { bone: bones.get(`Foot_${side}`)!, drop: measureSoleDrop(actor.scene, resolveFootRig(actor.scene, chain)!.foot) };
+      });
+      let minY = Infinity;
+      for (let i = 0; i <= 90; i++) {
+        const t = i / 30;
+        applySampledPose(actor.scene, sampleAnimation(anim, t));
+        actor.scene.updateWorldMatrix(true, true);
+        runtime?.solve(actor.scene, t, 1 / 30);
+        actor.scene.updateWorldMatrix(true, true);
+        for (const f of feet) minY = Math.min(minY, footSolePosition(f.bone, f.drop, new THREE.Vector3()).y);
+      }
+      return minY;
+    } finally {
+      actor.dispose();
+    }
+  }
+
+  it('下蹲：未锁定时脚明显入地，开启锁定后改善到容差内', () => {
+    const bare = measure('squat', false);
+    const locked = measure('squat', true);
+    expect(bare).toBeLessThan(-0.05);      // 未锁定确实穿地
+    expect(locked).toBeGreaterThan(bare);  // 锁定把它拉回地面
+    expect(locked).toBeGreaterThan(-0.05); // 且回到容差内
   });
 });

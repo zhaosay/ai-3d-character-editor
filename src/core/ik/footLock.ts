@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { indexBonesByName } from '../animation/applyPose';
 import { defaultPoleDir } from './twoBoneIK';
+import type { GroundField } from '../world/ground';
 import type { IKChainDef } from './types';
 import type { Vec3Tuple } from '../../types/global';
 
@@ -32,6 +33,8 @@ export interface FootLockConfig {
   plantTolerance: number;
   /** 极向量（膝盖朝向），null 时由几何推断 */
   poleHint?: Vec3Tuple;
+  /** 高度场：提供后落点会吸附到台阶/平台顶面（地面投射） */
+  field?: GroundField | null;
 }
 
 export const DEFAULT_FOOT_LOCK: FootLockConfig = {
@@ -50,12 +53,18 @@ export interface FootState {
   anchor: Vec3Tuple | null;
   /** 本帧为对齐落点而施加的水平位移（米，XZ 平面） */
   correction: number;
+  /**
+   * 落点与当前脚底的**三维**偏差（米，含垂直）。
+   * 蹲下/躺下这类「髋部垂直下沉」的动作，水平偏差为 0 但脚会沉入地面，
+   * 只有用三维偏差才触发纠正。
+   */
+  deviation: number;
   /** 因超出 maxCorrection 而放弃锁定的次数（诊断用） */
   abandoned: number;
 }
 
 function emptyState(side: FootSide): FootState {
-  return { side, planted: false, anchor: null, correction: 0, abandoned: 0 };
+  return { side, planted: false, anchor: null, correction: 0, deviation: 0, abandoned: 0 };
 }
 
 export function createFootLockStates(sides: FootSide[] = ['L', 'R']): Map<FootSide, FootState> {
@@ -73,60 +82,79 @@ export interface FootSample {
  * @param current 脚底当前世界位置
  * @param velocity 该脚的水平速度（米/秒），用于识别异常跳变
  */
+/** 当前采样点处的支撑高度：优先高度场（台阶/平台），否则用基准地面。 */
+function supportHeightAt(cfg: FootLockConfig, x: number, z: number, originY: number): number {
+  if (cfg.field) return cfg.field.sample(x, z, originY).height;
+  return cfg.groundY;
+}
+
+/**
+ * 更新单脚的锁定状态。
+ * @param current 脚底当前世界位置
+ * @param velocity 该脚的水平速度（米/秒），用于识别异常跳变
+ */
 export function updateFootState(
   state: FootState,
   current: THREE.Vector3,
   cfg: FootLockConfig,
   velocity = 0,
 ): FootState {
-  const footY = current.y;
-  const airborne = footY >= cfg.groundY + cfg.liftThreshold;
+  const groundHere = supportHeightAt(cfg, current.x, current.z, current.y);
+  const airborne = current.y >= groundHere + cfg.liftThreshold;
 
   if (airborne) {
     // 离地：释放锁定
-    if (state.planted) return { ...state, planted: false, anchor: null, correction: 0 };
-    return { ...state, correction: 0 };
+    if (state.planted) return { ...state, planted: false, anchor: null, correction: 0, deviation: 0 };
+    return { ...state, correction: 0, deviation: 0 };
   }
 
   if (!state.planted) {
-    // 触地（刚落地或初始就站在地上）：记录落点
-    // 速度过大说明这是采样跳变（如切换角色/时间跳变），仍记录但下帧再校正
+    // 触地（刚落地或初始就站在地上）：记录落点，高度吸附到支撑面
     return {
       ...state,
       planted: true,
-      anchor: [current.x, cfg.groundY, current.z] as Vec3Tuple,
+      anchor: [current.x, groundHere, current.z] as Vec3Tuple,
       correction: 0,
+      deviation: 0,
     };
   }
 
   // 支撑相内：保持原落点
   if (!state.anchor) {
-    return { ...state, planted: true, anchor: [current.x, cfg.groundY, current.z] as Vec3Tuple, correction: 0 };
+    return { ...state, planted: true, anchor: [current.x, groundHere, current.z] as Vec3Tuple, correction: 0, deviation: 0 };
   }
 
   const dx = state.anchor[0] - current.x;
   const dz = state.anchor[2] - current.z;
+  const dy = state.anchor[1] - current.y;
   const dist = Math.hypot(dx, dz);
+  // 三维偏差：水平滑动 + 垂直下沉（蹲下/躺下时水平为 0 但脚会入地）
+  const deviation = Math.hypot(dist, dy);
   if (dist > cfg.maxCorrection) {
     // 身体走得太远，IK 追不上（否则腿会被拉成奇怪角度）：放弃本落点，重新记录
     return {
       ...state,
-      anchor: [current.x, cfg.groundY, current.z] as Vec3Tuple,
+      anchor: [current.x, groundHere, current.z] as Vec3Tuple,
       correction: 0,
+      deviation: 0,
       abandoned: state.abandoned + 1,
     };
   }
   // 速度异常大时也重置落点（时间跳变保护）
   if (velocity > 6) {
-    return { ...state, anchor: [current.x, cfg.groundY, current.z] as Vec3Tuple, correction: 0 };
+    return { ...state, anchor: [current.x, groundHere, current.z] as Vec3Tuple, correction: 0, deviation: 0 };
   }
-  return { ...state, correction: dist };
+  return { ...state, correction: dist, deviation };
 }
 
-/** 锁定目标：把脚底世界位置校正回落点，并贴到地面。漂移在容差内返回 null（不干预）。 */
+/**
+ * 锁定目标：把脚底校正回落点。
+ * 触发条件用**三维偏差**——蹲下时水平不滑但垂直入地，也需要纠正。
+ * 垂直方向按 anchor 高度（含台阶吸附高度）回贴。
+ */
 export function lockedTarget(state: FootState, cfg: FootLockConfig): Vec3Tuple | null {
-  if (!state.planted || !state.anchor || state.correction <= cfg.plantTolerance) return null;
-  return [state.anchor[0], cfg.groundY, state.anchor[2]] as Vec3Tuple;
+  if (!state.planted || !state.anchor || state.deviation <= cfg.plantTolerance) return null;
+  return [state.anchor[0], state.anchor[1], state.anchor[2]] as Vec3Tuple;
 }
 
 export interface FootLockRig {

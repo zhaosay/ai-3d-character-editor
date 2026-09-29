@@ -60,7 +60,6 @@ export function PlaybackEngine() {
       applyFaceTracks(sceneObject, active.faceTracks ?? [], t);
       if (footLockEnabled) {
         if (!runtime.current) runtime.current = new FootLockRuntime(legChains(), footLockConfig);
-        else runtime.current.setConfig(footLockConfig);
         // solve() 内部会检测时间回退并重置状态
         setSlip(runtime.current.solve(sceneObject, t, delta));
       }

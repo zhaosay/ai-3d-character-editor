@@ -82,12 +82,18 @@ describe('lockedTarget', () => {
   });
 
   it('漂移小于容差时不干预（避免抖动）', () => {
-    const s: FootState = { side: 'L', planted: true, anchor: [0, 0, 0], correction: 0.01, abandoned: 0 };
+    const s: FootState = { side: 'L', planted: true, anchor: [0, 0, 0], correction: 0.01, deviation: 0.01, abandoned: 0 };
     expect(lockedTarget(s, cfg)).toBeNull();
   });
 
+  it('垂直下沉（水平不滑）也触发锁定——蹲下时脚会入地', () => {
+    // 蹲下：水平 correction=0，但脚底已低于锚点高度
+    const s: FootState = { side: 'L', planted: true, anchor: [0, 0, 0], correction: 0, deviation: 0.08, abandoned: 0 };
+    expect(lockedTarget(s, cfg)).toEqual([0, 0, 0]);
+  });
+
   it('漂移超过容差时返回落点并贴地', () => {
-    const s: FootState = { side: 'L', planted: true, anchor: [0.2, 0, 0.3], correction: 0.1, abandoned: 0 };
+    const s: FootState = { side: 'L', planted: true, anchor: [0.2, 0, 0.3], correction: 0.1, deviation: 0.1, abandoned: 0 };
     expect(lockedTarget(s, cfg)).toEqual([0.2, 0, 0.3]);
   });
 });
