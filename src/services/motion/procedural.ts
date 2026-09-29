@@ -658,7 +658,14 @@ export function generatePlannedTracks(
         perBonePosition.set(hipsName, arr);
         interactionPosition = [...destination];
       }
-    } else if (!bedInteraction && segments.some((s) => s.template === 'march' || s.template === 'lie' || s.template === 'sleep' || s.template === 'stand' || s.template === 'squat' || s.template === 'kneel' || s.template === 'sit' || s.template === 'orient')) {
+    } else if (
+      // 蹲/跪永远按**地面**支撑面下沉，不受场景道具影响（没有"蹲在桌子上"这种语义）。
+      // 之前这条守卫对全部模板统一要求 !bedInteraction，导致场景里一旦有床/椅，
+      // squat/kneel 连根骨位移轨道都不生成 —— 角色原地深蹲、大腿穿过桌面。
+      template === 'squat' || template === 'kneel'
+        ? true
+        : !bedInteraction && segments.some((s) => ['march', 'lie', 'sleep', 'stand', 'squat', 'kneel', 'sit', 'orient'].includes(s.template))
+    ) {
       const hipsName = bones.hips;
       const restPosition = restPositions.hips;
       if (!hipsName || !restPosition) {
