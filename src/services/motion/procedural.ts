@@ -105,7 +105,14 @@ export function pickTemplate(prompt: string): string {
   return 'sway';
 }
 
-function schedules(template: string, phase: number, bedInteraction?: WorldInteractionFrame | null, clause = ''): Schedule {
+function schedules(
+  template: string,
+  phase: number,
+  bedInteraction?: WorldInteractionFrame | null,
+  clause = '',
+  /** 该段是否「无支撑面、就地坐在/躺在地面」而非在道具上：影响腿的折叠与倒地编排。 */
+  onBareGround = false,
+): Schedule {
   const TAU = Math.PI * 2;
   switch (template) {
     case 'raise_left':
@@ -243,14 +250,20 @@ function schedules(template: string, phase: number, bedInteraction?: WorldIntera
     }
     case 'sit': {
       const env = (t: number) => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
+      // 坐在地面（无椅子/床）时腿要盘在地上： thighs 近乎水平、小腿收拢。
+      // 若沿用椅姿角度（大腿 -72°、小腿 +68°，脚垂直落地），
+      // 坐地面时脚会插进地面约 0.65m。
+      const floor = onBareGround;
+      const thigh = floor ? -84 : -72;
+      const shin = floor ? 84 : 68;
       return {
-        'hips': (t) => [38 * env(t), 0, 0],
+        'hips': (t) => [(floor ? 14 : 38) * env(t), 0, 0],
         'spine': (t) => [12 * env(t), 0, 0],
         'head': (t) => [-4 * env(t), 0, 0],
-        'thigh.L': (t) => [-72 * env(t), 0, 0],
-        'thigh.R': (t) => [-72 * env(t), 0, 0],
-        'shin.L': (t) => [68 * env(t), 0, 0],
-        'shin.R': (t) => [68 * env(t), 0, 0],
+        'thigh.L': (t) => [thigh * env(t), 0, 0],
+        'thigh.R': (t) => [thigh * env(t), 0, 0],
+        'shin.L': (t) => [shin * env(t), 0, 0],
+        'shin.R': (t) => [shin * env(t), 0, 0],
         'upperArm.L': (t) => [0, 0, 12 * env(t)],
         'upperArm.R': (t) => [0, 0, -12 * env(t)],
       };
@@ -288,7 +301,14 @@ function schedules(template: string, phase: number, bedInteraction?: WorldIntera
     }
     case 'lie': {
       const env = (t: number) => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
-      const groundedFall = /地面/.test(clause);
+      /**
+       * 是否走「从站立倒到地面」的编排（先屈膝缓冲再倒）。
+       * 判据是**有没有支撑面**（床/椅），而不是子句里有没有「地面」二字：
+       * 原来靠子句正则，导致英文 "lie down" 等无「地面」的子句走 else 分支，
+       * 拿「已经躺好」的直腿（thigh -8°/shin 0°）配「站立离地 13cm」的髋高，
+       * 过渡期穿地 0.42m。
+       */
+      const groundedFall = onBareGround || /地面/.test(clause);
       const legEnv = (t: number) => { const x = Math.max(0, Math.min(1, (t - 0.42) / 0.58)); return x * x * (3 - 2 * x); };
       return {
         // With +Z facing forward, negative X rotates the face upward.
@@ -544,7 +564,9 @@ export function generatePlannedTracks(
       const effectiveHand = attachment.blend < 0.5 ? attachment.from : attachment.to;
       if (effectiveHand) segmentInteraction = { ...interaction, wieldingHand: effectiveHand === 'hand.L' ? 'L' : 'R' };
     }
-    let sched = schedules(template, phase, segmentInteraction, seg.clause);
+    const onBareGround = !segmentInteraction
+      && (template === 'sit' || template === 'lie' || template === 'sleep');
+    let sched = schedules(template, phase, segmentInteraction, seg.clause, onBareGround);
     if (template === 'wave') {
       const requestedSide = /左手|左臂/.test(seg.clause) ? 'L' : 'R';
       const fallbackSide = requestedSide === 'L' ? 'R' : 'L';
@@ -636,7 +658,7 @@ export function generatePlannedTracks(
         perBonePosition.set(hipsName, arr);
         interactionPosition = [...destination];
       }
-    } else if (!bedInteraction && segments.some((s) => s.template === 'march' || s.template === 'lie' || s.template === 'sleep' || s.template === 'stand' || s.template === 'squat' || s.template === 'kneel')) {
+    } else if (!bedInteraction && segments.some((s) => s.template === 'march' || s.template === 'lie' || s.template === 'sleep' || s.template === 'stand' || s.template === 'squat' || s.template === 'kneel' || s.template === 'sit' || s.template === 'orient')) {
       const hipsName = bones.hips;
       const restPosition = restPositions.hips;
       if (!hipsName || !restPosition) {
@@ -649,19 +671,35 @@ export function generatePlannedTracks(
         const groundedHipOffset: Vec3Tuple = groundHipLocalOffset ?? [0, groundY + 0.13 - restPosition[1], 0];
         const bracedKneelOffset: Vec3Tuple = groundedHipOffset.map((value, axis) =>
           value + ((axis === 1 ? -0.42 * rootIntensity : 0) - value) * 0.3) as Vec3Tuple;
+        /**
+         * 坐姿髋高：从**静息髋高**直接落到坐面，而非从 groundedHipOffset 再减
+         * （后者已经是「站立骨盆离地 13cm」，再减会过头）。
+         * 无道具时按坐在地面处理：髋中心降到骨盆半径高度。
+         */
+        const seatedHipOffset = (pelvisRadius: number): Vec3Tuple =>
+          [0, groundY + pelvisRadius * rootIntensity - restPosition[1], 0] as Vec3Tuple;
         const toOffset = template === 'lie' || template === 'sleep' ? groundedHipOffset
           : template === 'kneel' && /扶地|撑地/.test(seg.clause) ? bracedKneelOffset
             : template === 'kneel' ? [0, -0.42 * rootIntensity, 0] as Vec3Tuple
             : template === 'squat' ? [0, -0.32 * rootIntensity, 0] as Vec3Tuple
-              : template === 'stand' ? [0, 0, 0] as Vec3Tuple : rootOffset;
+              : template === 'sit' ? seatedHipOffset(0.16)
+                : template === 'orient' && /翻身|侧卧|侧身/.test(seg.clause) ? groundedHipOffset
+                  : template === 'stand' ? [0, 0, 0] as Vec3Tuple : rootOffset;
         const keys: Keyframe<Vec3Tuple>[] = [];
         for (let i = 0; i < n; i++) {
           const time = Math.min(seg.t0 + i * STEP, seg.t1);
           const progress = (time - seg.t0) / span;
+          /**
+           * 髋部位移包络必须与**腿的伸展**同步，否则会插地：
+           * - 倒地编排（先屈膝 169° 再伸直）：髋必须等腿伸直后才降到底，
+           *   故延后到 42% 起步 —— 与 legEnv 的 (t-0.42)/0.58 对齐。
+           * - 非倒地（已躺好/在支撑面上）：位移与旋转同速铺满整段，
+           *   否则会在腿还没转平时就把髋降下去（实测占穿地量约 70%）。
+           */
           const rootProgress = template === 'lie'
-            ? /地面/.test(seg.clause)
+            ? (onBareGround || /地面/.test(seg.clause)
               ? Math.max(0, Math.min(1, (progress - 0.42) / 0.58))
-              : Math.min(1, progress / 0.65)
+              : Math.min(1, progress / 0.9))
             : progress;
           const smooth = rootProgress * rootProgress * (3 - 2 * rootProgress);
           // 步态带来的髋部垂直起伏（2× 步频）。真人行走时骨盆从不静止，

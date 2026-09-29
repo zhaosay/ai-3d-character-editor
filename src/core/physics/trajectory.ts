@@ -58,6 +58,26 @@ export function collectTrajectory(
   });
   if (!hips) return { samples: [], warnings: ['hips 骨骼缺失，无法分析'] };
   if (!footL && !footR) warnings.push('未找到脚骨骼，仅分析重心');
+
+  /**
+   * 骨骼 → 绑定网格的索引（一次性）。
+   * 刚性/软蒙皮下 SkinnedMesh 通常是骨骼的**兄弟节点**而非子节点，
+   * 只能靠 skeleton.bones 定位，不能用 traverse 找子网格。
+   */
+  const soleMeshes = new Map<number, THREE.Mesh[]>();
+  sceneObject.traverse((o) => {
+    const mesh = o as THREE.SkinnedMesh;
+    if (!mesh.isSkinnedMesh) return;
+    const skel = mesh.skeleton;
+    if (!skel) return;
+    skel.bones.forEach((bone, index) => {
+      const list = soleMeshes.get(index) ?? [];
+      list.push(mesh);
+      soleMeshes.set(index, list);
+      // 记录脚骨在 skeleton 中的索引，供 readSole 使用
+      if (bone === footL || bone === footR) bone.userData['soleIndex'] = index;
+    });
+  });
   if (massBones.length === 0) warnings.push('未映射可用于重心估算的人体骨骼，失衡分析不可用');
   else if (massCoverage < 0.8) warnings.push(`重心估算仅覆盖约 ${Math.round(massCoverage * 100)}% 的预期身体质量骨骼；低覆盖度时将跳过失衡判定`);
 
@@ -75,6 +95,7 @@ export function collectTrajectory(
   const massPosition = new THREE.Vector3();
   const footAxis = new THREE.Vector3();
   const footQuaternion = new THREE.Quaternion();
+  const soleVertex = new THREE.Vector3();
   try {
     const n = sampleCount;
     const v = new THREE.Vector3();
@@ -90,10 +111,29 @@ export function collectTrajectory(
       hips.getWorldPosition(v);
       const hipsY = v.y;
       const hipsLocal: Vec3Tuple = [hips.position.x, hips.position.y, hips.position.z];
-      const read = (b: THREE.Bone | null): Vec3Tuple | null => {
+      /**
+       * 脚底世界位置：读**绑定到该骨骼的网格**的真实最低顶点，而不是脚骨原点。
+       * 脚骨原点在踝/跟处，比可见脚底高约 15mm；脚旋转后偏差更大
+       * （鞋底盒会转向，静态偏移完全失效）。穿地是可见缺陷，必须按可见量判定。
+       */
+      const readSole = (b: THREE.Bone | null): Vec3Tuple | null => {
         if (!b) return null;
         b.getWorldPosition(v);
-        return [v.x, v.y, v.z];
+        let lowest = v.y;
+        const skinIndex = b.userData['soleIndex'] as number | undefined;
+        if (skinIndex === undefined) return [v.x, v.y, v.z];
+        const meshes = soleMeshes.get(skinIndex);
+        if (meshes) {
+          for (const mesh of meshes) {
+            const pos = mesh.geometry.attributes['position'] as THREE.BufferAttribute | undefined;
+            if (!pos) continue;
+            for (let i = 0; i < pos.count; i++) {
+              soleVertex.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+              if (soleVertex.y < lowest) lowest = soleVertex.y;
+            }
+          }
+        }
+        return [v.x, lowest, v.z];
       };
       const readFootForward = (bone: THREE.Bone | null): [number, number] | undefined => {
         if (!bone) return undefined;
@@ -124,7 +164,9 @@ export function collectTrajectory(
         const delta = rest.invert().multiply(current).normalize();
         jointAngles[joint.boneName] = THREE.MathUtils.radToDeg(2 * Math.acos(Math.min(1, Math.abs(delta.w))));
       }
-      samples.push({ time: t, hipsY, hipsLocal, feet: { L: read(footL), R: read(footR) }, footForward, centerOfMass, massCoverage, jointAngles });
+            // feet 用真实脚底（readSole），中心用 readSole 的 xz + 骨原点 y；
+      // 但重心的水平位置应跟骨盆走，故 feet 仍取脚底，平衡检测用 feet 的 xz。
+      samples.push({ time: t, hipsY, hipsLocal, feet: { L: readSole(footL), R: readSole(footR) }, footForward, centerOfMass, massCoverage, jointAngles });
     }
   } finally {
     const live = indexBonesByName(sceneObject);

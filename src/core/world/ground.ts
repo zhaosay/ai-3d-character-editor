@@ -136,22 +136,3 @@ export class GroundField {
     this.boxes.length = 0;
   }
 }
-
-/** 由道具列表构造高度场：只有「可站立」的道具参与（床/桌/椅子等）。 */
-const WALKABLE_KINDS = new Set(['bed', 'chair', 'sofa', 'table', 'room']);
-
-export function groundFieldFromProps(
-  groundY: number,
-  props: Array<{ id: string; kind: string; position: readonly number[]; rotationY: number; size: { width: number; height: number; length: number } }>,
-): GroundField {
-  const boxes = props
-    .filter((p) => WALKABLE_KINDS.has(p.kind))
-    .map((p) => ({
-      id: p.id,
-      center: [p.position[0], p.position[1] + p.size.height / 2, p.position[2]] as Vec3Like,
-      size: [p.size.width, p.size.height, p.size.length] as Vec3Like,
-      rotationY: p.rotationY,
-      walkable: true,
-    }));
-  return new GroundField({ groundY, boxes });
-}

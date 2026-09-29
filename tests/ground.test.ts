@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GroundField, groundFieldFromProps } from '../src/core/world/ground';
+import { GroundField } from '../src/core/world/ground';
 
 describe('GroundField 基准平面', () => {
   it('空场地返回地面高度与向上法线', () => {
@@ -96,23 +96,5 @@ describe('GroundField 法线与工具', () => {
     expect(g.isElevated(0, 0, 0.1)).toBe(true);
     g.clearBoxes();
     expect(g.isElevated(0, 0, 0.1)).toBe(false);
-  });
-});
-
-describe('groundFieldFromProps', () => {
-  const props = [
-    { id: 'bed1', kind: 'bed', position: [2, 0, 0] as const, rotationY: 0, size: { width: 1.4, height: 0.5, length: 2 } },
-    { id: 'sword1', kind: 'sword', position: [0, 0.2, 0] as const, rotationY: 0, size: { width: 0.05, height: 0.05, length: 0.9 } },
-  ];
-
-  it('床/桌可站立，剑等不可', () => {
-    const g = groundFieldFromProps(0, props);
-    expect(g.sample(2, 0, 0.3).source).toBe('box');   // 床面 0.5
-    expect(g.sample(0, 0, 0.2).source).toBe('plane'); // 剑不构成地面
-  });
-
-  it('道具中心已含底面偏移，顶面 = position.y + height', () => {
-    const g = groundFieldFromProps(0, props);
-    expect(g.sample(2, 0, 0.4).height).toBeCloseTo(0.5, 6);
   });
 });
