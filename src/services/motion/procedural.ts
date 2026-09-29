@@ -3,6 +3,9 @@ import type { HumanoidSemantic } from '../../core/skeleton/types';
 import type { BoneTrack, Keyframe } from '../../core/animation/types';
 import type { QuatTuple, Vec3Tuple } from '../../types/global';
 import { positiveIntent, sampleWeaponAttachment, type WorldInteractionFrame } from '../../core/previs/world';
+import {
+  anticipationEnvelope, breathSignal, gaitCycle, gaitLeg, gaitPeriod, proximalDelay,
+} from '../../core/motion/gaits';
 
 export type BoneMap = Partial<Record<HumanoidSemantic, string>>;
 /** 静息四元数（语义→快照 restLocal），模板偏移量以此为基准合成，适配任意绑定姿势。 */
@@ -48,10 +51,17 @@ export interface PlanSegment {
 }
 
 type EulerDeg = [number, number, number];
-type Schedule = Partial<Record<HumanoidSemantic, (t: number) => EulerDeg>>;
+/**
+ * 模板函数：t = 段内进度 0..1，timeSec = 该采样点的绝对时间（秒）。
+ * timeSec 供需要真实时钟的动态（呼吸、步态周期）使用；不需要时忽略。
+ */
+type ScheduleFn = (t: number, timeSec?: number) => EulerDeg;
+type Schedule = Partial<Record<HumanoidSemantic, ScheduleFn>>;
 
 const D2R = Math.PI / 180;
 const STEP = 0.25;
+/** 双支撑相骨盆起伏的常量基准（gaitLeg 的 hipLift 在整周期首尾恒为该值）。 */
+const GAIT_HIP_BASE = 0.022 - 0.044;
 
 export function eulerXyzToQuat(e: EulerDeg): QuatTuple {
   const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(e[0] * D2R, e[1] * D2R, e[2] * D2R, 'XYZ'));
@@ -147,15 +157,34 @@ function schedules(template: string, phase: number, bedInteraction?: WorldIntera
         'upperArm.R': (t) => [12 * Math.sin(Math.PI * t), 0, 0],
       };
     case 'march': {
-      const swing = (t: number, off: number) => 26 * Math.sin(TAU * (2 * t + off));
+      // 真实步态：左右腿反相半个周期；摆动期膝「先屈后伸」；髋部 2× 步频起伏；
+      // 骨盆与胸廓反向扭转；摆臂时肘始终微屈。均来自 core/motion/gaits。
+      const period = gaitPeriod({ legLength: 0.85, stride: 0.62 });
+      // 段首相位对齐到左脚触地，避免任意起步造成左右脚相位突变
+      const legAt = (timeSec: number, side: 'L' | 'R') => {
+        const cyc = (timeSec / period) + (side === 'L' ? 0 : 0.5) - phase;
+        return gaitLeg(cyc);
+      };
+      const body = (timeSec: number) => gaitCycle((timeSec / period) - phase);
       return {
-        'thigh.L': (t) => [swing(t, 0), 0, 0],
-        'thigh.R': (t) => [swing(t, 0.5), 0, 0],
-        'shin.L': (t) => [Math.max(0, -18 * Math.sin(TAU * (2 * t + 0.25))), 0, 0],
-        'shin.R': (t) => [Math.max(0, -18 * Math.sin(TAU * (2 * t + 0.75))), 0, 0],
-        'upperArm.L': (t) => [swing(t, 0.5) * 0.6, 0, 0],
-        'upperArm.R': (t) => [swing(t, 0) * 0.6, 0, 0],
-        'spine': (t) => [3 * Math.sin(TAU * (2 * t)), 0, 0],
+        'thigh.L': (_t: number, timeSec = 0) => { const s = legAt(timeSec, 'L'); return [s.thigh, 0, 0]; },
+        'thigh.R': (_t: number, timeSec = 0) => { const s = legAt(timeSec, 'R'); return [s.thigh, 0, 0]; },
+        // 负值 = 屈膝（与原模板相反：原来用 max(0,...) 只会单向掰直）
+        'shin.L': (_t: number, timeSec = 0) => { const s = legAt(timeSec, 'L'); return [-s.knee, 0, 0]; },
+        'shin.R': (_t: number, timeSec = 0) => { const s = legAt(timeSec, 'R'); return [-s.knee, 0, 0]; },
+        'foot.L': (_t: number, timeSec = 0) => { const s = legAt(timeSec, 'L'); return [s.ankle, 0, 0]; },
+        'foot.R': (_t: number, timeSec = 0) => { const s = legAt(timeSec, 'R'); return [s.ankle, 0, 0]; },
+        // 手臂与同侧腿反相
+        'upperArm.L': (_t: number, timeSec = 0) => { const s = body(timeSec); return [s.right.armSwing * 0.55, 0, 0]; },
+        'upperArm.R': (_t: number, timeSec = 0) => { const s = body(timeSec); return [s.left.armSwing * 0.55, 0, 0]; },
+        'forearm.L': (_t: number, timeSec = 0) => { const s = body(timeSec); return [-s.right.elbow, 0, 0]; },
+        'forearm.R': (_t: number, timeSec = 0) => { const s = body(timeSec); return [-s.left.elbow, 0, 0]; },
+        // 骨盆随步态扭转，胸廓反向（真人走look的核心辨识特征）
+        'spine': (_t: number, timeSec = 0) => { const s = body(timeSec); return [2, -s.pelvisYaw * 0.6, 0]; },
+        'chest': (_t: number, timeSec = 0) => { const s = body(timeSec); return [0, -s.pelvisYaw, 0]; },
+        'hips': (_t: number, timeSec = 0) => { const s = body(timeSec); return [0, s.pelvisYaw, 0]; },
+        // 头部保持朝向稳定（抵消骨盆扭转）
+        'head': (_t: number, timeSec = 0) => { const s = body(timeSec); return [0, s.pelvisYaw * 0.35, 0]; },
       };
     }
     case 'reach': {
@@ -297,20 +326,25 @@ function schedules(template: string, phase: number, bedInteraction?: WorldIntera
         'shin.R': () => [0, 0, 0],
         'chest': (t) => [1.2 * Math.sin(Math.PI * 2 * t), 0, 0],
       };
-    // 武侠单发包络（起势→发力→收势，段内回到起点，可循环拼接）
+    // 武侠单发包络：预备(反向蓄力)→发力(近端先动)→跟随(轻微过冲)，段内回到起点，可循环拼接
     case 'sword': {
-      const env = (t: number) => Math.sin(Math.PI * t);
+      // 发力类用非对称包络：蓄力 14%、快速出剑、收势带过冲
+      const env = (t: number) => anticipationEnvelope(t, { windup: 0.14, settle: 0.22, windupAmount: 0.2, overshoot: 0.1 });
       const leftHanded = bedInteraction?.wieldingHand === 'L';
+      const main = leftHanded ? 'upperArm.L' : 'upperArm.R';
+      const mainFore = leftHanded ? 'forearm.L' : 'forearm.R';
+      const off = leftHanded ? 'upperArm.R' : 'upperArm.L';
       return {
         'spine': (t) => [6 * env(t), (leftHanded ? -28 : 28) * env(t), 0],
-        [leftHanded ? 'upperArm.L' : 'upperArm.R']: (t: number) => [-115 * env(t), 0, (leftHanded ? 35 : -35) * env(t)],
-        [leftHanded ? 'forearm.L' : 'forearm.R']: (t: number) => [-25 * env(t), 0, 0],
-        [leftHanded ? 'upperArm.R' : 'upperArm.L']: (t: number) => [0, 0, (leftHanded ? -12 : 12) * env(t)],
+        [main]: (t: number) => [-115 * env(t), 0, (leftHanded ? 35 : -35) * env(t)],
+        // 前臂延迟启动（近端先动：肩→肘）
+        [mainFore]: (t: number) => [-25 * env(proximalDelay(t, 0.08)), 0, 0],
+        [off]: (t: number) => [0, 0, (leftHanded ? -12 : 12) * env(t)],
         'head': (t: number) => [0, (leftHanded ? 12 : -12) * env(t), 0],
       };
     }
     case 'block': {
-      const env = (t: number) => Math.sin(Math.PI * t);
+      const env = (t: number) => anticipationEnvelope(t, { windup: 0.12, settle: 0.2, windupAmount: 0.16, overshoot: 0.08 });
       return {
         'spine': (t) => [10 * env(t), 0, 0],
         'upperArm.L': (t) => [-30 * env(t), 0, -25 * env(t)],
@@ -321,13 +355,18 @@ function schedules(template: string, phase: number, bedInteraction?: WorldIntera
       };
     }
     case 'kick': {
-      const env = (t: number) => Math.sin(Math.PI * t);
+      // 踢腿：先收腿蓄力（预备），再快速踢出，收腿带轻微过冲
+      const env = (t: number) => anticipationEnvelope(t, { windup: 0.18, settle: 0.24, windupAmount: 0.3, overshoot: 0.12 });
       const lead = /左(?:腿|脚)/.test(clause) ? 'L' : 'R';
       const guard = lead === 'L' ? 'R' : 'L';
       const leftArmSign = lead === 'R' ? -1 : 1;
       return {
         [`thigh.${lead}`]: (t: number) => [-70 * env(t), 0, 0],
-        [`shin.${lead}`]: (t: number) => [35 * env(t) * env(t), 0, 0],
+        // 小腿延后启动（髋→膝），踢出后伸膝发力
+        [`shin.${lead}`]: (t: number) => {
+          const e = env(proximalDelay(t, 0.1));
+          return [35 * e * e, 0, 0];
+        },
         [`thigh.${guard}`]: () => [0, 0, 0],
         'upperArm.L': (t: number) => [25 * leftArmSign * env(t), 0, 0],
         'upperArm.R': (t: number) => [-25 * leftArmSign * env(t), 0, 0],
@@ -335,7 +374,8 @@ function schedules(template: string, phase: number, bedInteraction?: WorldIntera
       };
     }
     case 'punch': {
-      const env = (t: number) => Math.sin(Math.PI * t);
+      // 出拳：肩先动、肘后动（近端→远端），预备反向蓄力
+      const env = (t: number) => anticipationEnvelope(t, { windup: 0.16, settle: 0.2, windupAmount: 0.24, overshoot: 0.1 });
       const lead = /左手/.test(clause) ? 'L' : 'R';
       const guard = lead === 'L' ? 'R' : 'L';
       const leadSign = lead === 'R' ? -1 : 1;
@@ -343,20 +383,21 @@ function schedules(template: string, phase: number, bedInteraction?: WorldIntera
       return {
         'spine': (t: number) => [0, 12 * env(t), 0],
         [`upperArm.${lead}`]: (t: number) => [-18 * env(t), 0, 62 * leadSign * env(t)],
-        [`forearm.${lead}`]: (t: number) => [-8 * env(t), 0, -14 * leadSign * env(t)],
+        [`forearm.${lead}`]: (t: number) => [-8 * env(t), 0, -14 * leadSign * env(proximalDelay(t, 0.1))],
         [`upperArm.${guard}`]: (t: number) => [-22 * env(t), 0, -18 * guardSign * env(t)],
         [`forearm.${guard}`]: (t: number) => [-55 * env(t), 0, 0],
         'head': (t) => [3 * env(t), 0, 0],
       };
     }
     case 'breath': {
-      // 待机呼吸：每段一次缓慢起伏（4s 段 ≈ 15 次/分）
-      const b = (t: number) => Math.sin(TAU * t);
+      // 待机呼吸：按真实时钟 0.25Hz（15次/分），由胸廓带动肩与头微动（Breath Coupling）
+      const b = (_t: number, timeSec = 0) => breathSignal(timeSec, { hz: 0.25, amount: 1 });
       return {
-        'spine': (t) => [1.2 * b(t), 0, 0],
-        'chest': (t) => [2.0 * b(t), 0, 0],
-        'upperArm.L': (t) => [0.8 * b(t), 0, 0],
-        'upperArm.R': (t) => [0.8 * b(t), 0, 0],
+        'chest': (t, s) => [1.8 * b(t, s), 0, 0],
+        'spine': (t, s) => [1.0 * b(t, s), 0, 0],
+        'upperArm.L': (t, s) => [0.7 * b(t, s), 0, 0],
+        'upperArm.R': (t, s) => [0.7 * b(t, s), 0, 0],
+        'head': (t, s) => [0.5 * b(t, s), 0, 0],
       };
     }
     default:
@@ -517,7 +558,7 @@ export function generatePlannedTracks(
     }
     const span = Math.max(seg.t1 - seg.t0, 1e-6);
     const n = Math.max(2, Math.floor(span / STEP) + 1);
-    for (const [semantic, fn] of Object.entries(sched) as Array<[HumanoidSemantic, (t: number) => EulerDeg]>) {
+    for (const [semantic, fn] of Object.entries(sched) as Array<[HumanoidSemantic, ScheduleFn]>) {
       const boneName = bones[semantic];
       if (!boneName) {
         warnings.push(`缺少 ${semantic}，已跳过`);
@@ -534,7 +575,7 @@ export function generatePlannedTracks(
         const time = Math.min(seg.t0 + i * STEP, seg.t1);
         const progress = Math.min(Math.max((time - seg.t0) / span, 0), 1);
         const motionProgress = Math.pow(progress, 1 / speed);
-        const off = fn(motionProgress).map((value) => value * intensity) as EulerDeg;
+        const off = fn(motionProgress, time).map((value) => value * intensity) as EulerDeg;
         let value = restQ ? composeRestOffset(restQ, off) : eulerXyzToQuat(off);
         if (previous && time - seg.t0 < blendSpan) {
           const q = new THREE.Quaternion(...previous).slerp(new THREE.Quaternion(...value), (time - seg.t0) / blendSpan);
@@ -544,7 +585,7 @@ export function generatePlannedTracks(
       }
       const lastT = ks[ks.length - 1].time;
       if (lastT < seg.t1 - TIME_EPS) {
-        ks.push({ time: seg.t1, value: restQ ? composeRestOffset(restQ, fn(1)) : eulerXyzToQuat(fn(1)), interp: 'linear' });
+        ks.push({ time: seg.t1, value: restQ ? composeRestOffset(restQ, fn(1, seg.t1)) : eulerXyzToQuat(fn(1, seg.t1)), interp: 'linear' });
       }
       const arr = perBone.get(boneName) ?? [];
       arr.push(...ks);
@@ -623,13 +664,26 @@ export function generatePlannedTracks(
               : Math.min(1, progress / 0.65)
             : progress;
           const smooth = rootProgress * rootProgress * (3 - 2 * rootProgress);
+          // 步态带来的髋部垂直起伏（2× 步频）。真人行走时骨盆从不静止，
+          // 这是"看起来像假人"的常见原因之一。
+          // 段首尾都淡入淡出到 0：非 march 段（停顿/坐/躺）的髋部必须完全冻结，
+          // 且相邻段之间不能因 bob 产生跳变。
+          // 呼吸同样不作用于根节点，只体现在胸/肩/头旋转（见 breath 模板）。
+          // 步态带来的髋部垂直起伏（2× 步频）。真人行走时骨盆从不静止，
+          // 这是"看起来像假人"的常见原因之一。
+          // 减去双支撑相的常量基准，使走路段首尾都归零 —— 这样与后续
+          // 「停顿/坐/躺」段（bob=0）天然连续，不会产生段边界跳变。
+          const hipBob = template === 'march'
+            ? gaitCycle((time - seg.t0) / gaitPeriod({ legLength: 0.85, stride: 0.62 }) - phase).hipLift - GAIT_HIP_BASE
+            : 0;
           keys.push({ time: round3(time), value: [
             restPosition[0] + fromOffset[0] + (toOffset[0] - fromOffset[0]) * smooth,
-            restPosition[1] + fromOffset[1] + (toOffset[1] - fromOffset[1]) * smooth,
+            restPosition[1] + fromOffset[1] + (toOffset[1] - fromOffset[1]) * smooth + hipBob,
             restPosition[2] + fromOffset[2] + (toOffset[2] - fromOffset[2]) * smooth + walkedZ + distance * progress,
           ], interp: 'linear' });
         }
         if (keys[keys.length - 1].time < seg.t1 - TIME_EPS) {
+          // 末帧 bob 已淡出为 0，保证与后续静止段连续
           keys.push({ time: seg.t1, value: [restPosition[0] + toOffset[0], restPosition[1] + toOffset[1], restPosition[2] + toOffset[2] + walkedZ + distance], interp: 'linear' });
         }
         const arr = perBonePosition.get(hipsName) ?? [];

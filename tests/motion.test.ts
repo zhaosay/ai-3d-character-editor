@@ -342,7 +342,10 @@ describe('procedural', () => {
     const result = generateProceduralTracks(bones, { prompt: '走到桌前', duration: 4 }, {}, restPositions);
     const hips = result.tracks.find((t) => t.boneName === 'Hips')!;
     expect(hips.position.length).toBeGreaterThan(1);
-    expect(hips.position[0].value).toEqual([0, 1, 0]);
+    // 髋部叠加了呼吸/步态起伏（真人骨盆从不停止），故首帧 X/Z 精确、Y 允许微幅偏移
+    expect(hips.position[0].value[0]).toBeCloseTo(0, 6);
+    expect(hips.position[0].value[1]).toBeCloseTo(1, 1);
+    expect(hips.position[0].value[2]).toBeCloseTo(0, 6);
     expect(hips.position.at(-1)!.value[2]).toBeGreaterThan(0.6);
     expect(result.quality).toMatchObject({ status: 'ready' });
     const anim = { id: 'walk', name: 'walk', duration: 4, fps: 30, tracks: result.tracks };
