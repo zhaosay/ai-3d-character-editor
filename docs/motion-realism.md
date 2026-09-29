@@ -30,7 +30,7 @@
 - **[CMU Graphics Lab Motion Capture Database](http://mocap.cs.cmu.edu)** — 免费商用动捕库，是步态相位、摆臂幅度的**权威参考数据**。本项目的 `gaitLeg()` 支撑/摆动期划分（60%支撑/40%摆动）即按此校准。
 - **[three.js webgl_animation_walk](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_animation_walk.html)** — 参考其 `ACESFilmicToneMapping` + HDR 环境的写实预览思路（已用于本项目写实预览面板）。
 
-## 三、本轮改动
+## 三、动作真实度改动
 
 新增 `src/core/motion/gaits.ts`（纯函数、可单测），并接入 `src/services/motion/procedural.ts`：
 - `march` 模板重写为真实步态（含踝、膝、骨盆扭转、摆臂带肘、髋部起伏）
@@ -39,9 +39,30 @@
 
 测试：新增 `tests/gaits.test.ts`（27 项基元）与 `tests/gaits.integration.test.ts`（9 项端到端）。
 
-## 四、已知仍不真实的边界（诚实说明）
+## 四、足部锁定（Foot Lock）
 
-1. **脚不打滑**：走路是"程序化步态"而非足部 IK 锁定，脚在地面会有轻微水平滑动。彻底解决需在 `PlaybackEngine` 接入地面投射 IK（参考 Spider 项目的 two-bone IK + 支撑腿锁定思路）。
-2. **无次级动力学**：头发/衣物没有跟随惯性（look 中依赖美术端 cloth 或游戏引擎）。
-3. **面部表情**仍依赖导入模型自带 blendshape，程序化角色只有眨眼实时层。
-4. 写实游戏级人物的**皮肤/头发 PBR 贴图**必须靠导入外部资产，代码无法生成。
+程序化步态的固有缺陷是**脚打滑**：支撑腿的脚本应钉在地面，但骨骼只是按曲线旋转，脚会随身体平移。
+
+实现见 `src/core/ik/footLock.ts`（纯状态机）+ `src/services/motion/footLockRuntime.ts`（运行时）：
+
+- **状态机**：触地 → 记录世界落点（plant）；持续触地 → 保持落点；离地 → 释放
+- **每帧**用现成的两骨 IK（`applyIKChain`）把支撑脚拉回落点
+- **实测脚底偏移**：脚骨原点≠脚底，且刚性蒙皮下网格是骨骼的兄弟节点而非子节点，
+  故用 `skeleton.bones.indexOf(foot)` 定位绑定网格后扫描顶点实测，**不能硬编码常数**
+- **安全降级**：漂移超过 `maxCorrection`（IK 追不上）时放弃本落点重记，避免腿被拉变形；
+  时间回退（拖时间轴）自动重置状态；速度异常（时间跳变）重置落点
+- **Scrub 从 0 重放**：落点状态是时间累积量，直接在目标时间求解会与播放不一致，
+  故暂停拖动时从动画起点逐步重放
+
+实测效果（程序化男角色走 3 秒，见 `tests/footLock.integration.test.ts`）：
+**支撑脚水平漂移从 ~70cm 降到 ~1.7cm（约 40 倍）**。
+
+UI：右侧「写实预览」面板底部，默认**关闭** —— 手工摆过脚部关键帧的动画会被它覆盖。
+
+## 五、已知仍不真实的边界（诚实说明）
+
+1. **次级动力学**：头发/衣物没有跟随惯性（look 中依赖美术端 cloth 或游戏引擎）。
+2. **面部表情**仍依赖导入模型自带 blendshape，程序化角色只有眨眼实时层。
+3. 写实游戏级人物的**皮肤/头发 PBR 贴图**必须靠导入外部资产，代码无法生成。
+4. 足部锁定只处理水平滑动，**不做地面高度跟随**（台阶/斜坡需另做地面投射）。
+
