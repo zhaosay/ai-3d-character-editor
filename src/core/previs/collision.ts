@@ -300,7 +300,8 @@ export function inspectPropSupportWarnings(
       const start = action.t0 + (action.t1 - action.t0) * 0.65;
       const count = Math.min(16, Math.max(2, Math.ceil((action.t1 - start) * 10) + 1));
       const surfaceY = contact.surface === 'seat' && prop.kind === 'chair'
-        ? prop.position[1] + prop.size.height * 0.52
+        // 椅面顶用真实座板几何 0.48h + 0.04（与 getPropCollisionBoxes / WorldStage 一致）
+        ? prop.position[1] + prop.size.height * 0.48 + 0.04
         : contact.surface === 'seat' && prop.kind === 'sofa'
           ? prop.position[1] + prop.size.height * 0.58
           : prop.position[1] + prop.size.height;
@@ -560,7 +561,8 @@ function permitsExpectedContact(
   if (contact.surface === 'mattress' || contact.surface === 'seat') {
     const { start, end } = segmentInPropSpace(a, b, prop);
     const surfaceLocalY = contact.surface === 'seat' && prop.kind === 'chair'
-      ? prop.size.height * 0.02
+      // 椅面顶的真实局部高度（座板盒：center 0.48h、half-height 0.04）
+      ? prop.size.height * 0.48 + 0.04
       : contact.surface === 'seat' && prop.kind === 'sofa'
         ? prop.size.height * 0.08
         : prop.size.height / 2;

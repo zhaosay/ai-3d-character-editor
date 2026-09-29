@@ -338,7 +338,8 @@ export function propInteractionWorldPoint(prop: StageProp): Vec3Tuple {
   const local = prop.kind === 'table'
     ? new THREE.Vector3(0, prop.size.height, prop.size.length / 2)
       : prop.kind === 'chair'
-        ? new THREE.Vector3(0, prop.size.height * 0.52, prop.size.length * 0.32)
+        // 椅面顶 = 0.48h + 0.04（真实座板几何），不是 0.52h（误差 0.04(1-h)，极端椅高下可达 8cm）
+        ? new THREE.Vector3(0, prop.size.height * 0.48 + 0.04, prop.size.length * 0.32)
         : prop.kind === 'sofa'
           ? new THREE.Vector3(0, prop.size.height * 0.58, prop.size.length * 0.06)
         : prop.kind === 'bed'
@@ -943,8 +944,20 @@ export function resolvePropInteractionFrame(
   const toward = propCenter.clone().sub(approach).setY(0).normalize();
   const yawRadians = Math.atan2(forward.z * toward.x - forward.x * toward.z, forward.x * toward.x + forward.z * toward.z);
   const interaction = toParent(approach);
+  /**
+   * 坐姿髋目标 = **座面高度 + 骨盆代理半径**，而不是 `height * 0.74` 这类魔数。
+   *
+   * 座面高度必须用**真实几何** `0.48h + 0.04`（见 WorldStage.tsx 的座板盒 / getPropCollisionBoxes），
+   * 而不是各处声明的 `0.52h` —— 后者的误差是 `0.04(1-h)`，椅高 0.2m 时差 3.2cm、3.0m 时差 8cm。
+   * 骨盆半径 0.13 与 `estimateGroundHipLocalOffset` / `inspectGroundSupportWarnings` 共用同一常数。
+   *
+   * 旧值 0.74h 的关节抬升是 0.198m，而 bed(0.12) / sofa(0.126) 都是 ~0.12~0.13 —— 椅子是离群值，
+   * 导致角色坐椅时骨盆网格悬空 8.1cm（可见）。改为按座面推导后悬空降到 1.7cm。
+   */
+  const seatTop = (kind: string) => (kind === 'sofa' ? prop.size.height * 0.58 : prop.size.height * 0.48 + 0.04);
+  const PELVIS_RADIUS = 0.13;
   const seat = prop.kind === 'chair' || prop.kind === 'sofa'
-    ? new THREE.Vector3(0, prop.kind === 'sofa' ? prop.size.height * 0.72 : prop.size.height * 0.74,
+    ? new THREE.Vector3(0, seatTop(prop.kind) + PELVIS_RADIUS,
       prop.kind === 'sofa' ? prop.size.length * 0.06 : prop.size.length * 0.08)
       .applyAxisAngle(new THREE.Vector3(0, 1, 0), prop.rotationY)
       .add(new THREE.Vector3(...prop.position))
@@ -959,7 +972,8 @@ export function resolvePropInteractionFrame(
     : prop.kind === 'table'
       ? new THREE.Vector3(0, prop.size.height, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), prop.rotationY).add(propCenter)
       : prop.kind === 'chair'
-        ? new THREE.Vector3(0, prop.size.height * 0.52, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), prop.rotationY).add(propCenter)
+        // 椅面顶用真实座板几何 0.48h + 0.04（与 getPropCollisionBoxes 一致）
+        ? new THREE.Vector3(0, prop.size.height * 0.48 + 0.04, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), prop.rotationY).add(propCenter)
         : prop.kind === 'phone'
           ? new THREE.Vector3(0, prop.size.height / 2, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), prop.rotationY).add(propCenter)
           : prop.kind === 'sword'

@@ -71,7 +71,8 @@ describe('ScenePlan', () => {
       path: 'environment.props.tight-room.size.height', message: expect.stringMatching(/房间净高 1.60 米.*站立或抬手动作/),
     }));
     expect(warnings).toContainEqual(expect.objectContaining({
-      path: 'environment.props.tiny-chair.size.height', message: expect.stringMatching(/椅面约 0.10 米.*占人物身高 6%/),
+      // 椅面高度用真实座板几何 0.48h + 0.04 = 0.136（h=0.2），旧值 0.52h 会算成 0.104
+      path: 'environment.props.tiny-chair.size.height', message: expect.stringMatching(/椅面约 0.14 米.*占人物身高 8%/),
     }));
   });
 

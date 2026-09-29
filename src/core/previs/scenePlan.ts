@@ -81,7 +81,8 @@ function segmentIntersectsPropBounds(start: number[], end: number[], prop: Stage
 function contactSurfaceWorldHeight(prop: StageProp, surface: ContactConstraint['surface']): number | undefined {
   if (surface === 'mattress' && prop.kind === 'bed') return prop.position[1] + prop.size.height;
   if (surface === 'seat') {
-    if (prop.kind === 'chair') return prop.position[1] + prop.size.height * 0.52;
+    // 椅面顶用真实座板几何 0.48h + 0.04（与 getPropCollisionBoxes / WorldStage 一致）
+    if (prop.kind === 'chair') return prop.position[1] + prop.size.height * 0.48 + 0.04;
     if (prop.kind === 'sofa') return prop.position[1] + prop.size.height * 0.58;
     if (prop.kind === 'bed') return prop.position[1] + prop.size.height;
   }
@@ -277,7 +278,7 @@ export function validateScenePlan(plan: ScenePlan): ScenePlanIssue[] {
   if (hasCharacterHeight) {
     const likelyRanges: Partial<Record<StageProp['kind'], { label: string; height: (prop: StageProp) => number; range: [number, number]; surface?: ContactConstraint['surface'] }>> = {
       bed: { label: '床面', height: (prop) => prop.position[1] + prop.size.height, range: [0.15, 0.62], surface: 'mattress' },
-      chair: { label: '椅面', height: (prop) => prop.position[1] + prop.size.height * 0.52, range: [0.2, 0.4], surface: 'seat' },
+      chair: { label: '椅面', height: (prop) => prop.position[1] + prop.size.height * 0.48 + 0.04, range: [0.2, 0.4], surface: 'seat' },
       sofa: { label: '沙发座面', height: (prop) => prop.position[1] + prop.size.height * 0.58, range: [0.2, 0.4], surface: 'seat' },
       table: { label: '桌面', height: (prop) => prop.position[1] + prop.size.height, range: [0.28, 0.78], surface: 'interaction-point' },
       door: { label: '门高', height: (prop) => prop.position[1] + prop.size.height, range: [0.85, 1.8] },

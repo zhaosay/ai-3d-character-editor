@@ -530,8 +530,13 @@ describe('world action planning', () => {
     hips.name = 'Hips'; hips.position.set(0, 1, 0); character.add(hips); character.updateWorldMatrix(true, true);
     const frame = resolvePropInteractionFrame(chair, character, buildSkeletonTree(character))!;
 
-    expect(frame.handTargetPosition?.[1]).toBeCloseTo(0.468, 5);
-    expect(frame.sitPosition[1]).toBeCloseTo(0.666, 5);
+    // 手接触高度 = **真实可见椅面** 0.48h + 0.04 = 0.472（默认 h=0.9）。
+    // 旧值用 0.52h = 0.468，误差 0.04(1-h)：椅高 0.2m 时差 3.2cm、3.0m 时差 8cm。
+    expect(frame.handTargetPosition?.[1]).toBeCloseTo(0.472, 5);
+    // 髋目标 = 椅面 + 骨盆代理半径 0.13 = 0.602。
+    // 旧值 0.74h = 0.666 的关节抬升是 0.198m，而 bed(0.12)/sofa(0.126) 都 ~0.12~0.13，
+    // 椅子是离群值，会让角色坐椅时骨盆网格悬空 8.1cm（可见）。
+    expect(frame.sitPosition[1]).toBeCloseTo(0.602, 5);
   });
 
   it('detects a thin obstacle between approach samples', () => {
