@@ -7,6 +7,8 @@ import type { CharacterMeta } from '../src/types/global';
 import { createScenePlan } from '../src/core/previs/scenePlan';
 import { buildSkeletonTree } from '../src/core/skeleton/buildSkeletonTree';
 import { rebuildSketchCharacter } from '../src/services/sketch/buildSketchCharacter';
+import { buildDemoCharacter } from '../src/services/demo/buildDemoCharacter';
+import { DEFAULT_APPEARANCE, RANGES } from '../src/core/character/appearance';
 import { LANDMARK_ORDER, restoreSketchDraft } from '../src/core/rig/sketchToSpec';
 
 const Q: [number, number, number, number] = [0, 0, 0, 1];
@@ -117,6 +119,45 @@ describe('project save/load', () => {
     } finally {
       rebuilt.dispose();
     }
+  });
+
+  it('程序化角色的外观配方随项目保存，支持打开时重建', () => {
+    const p = createEmptyProject();
+    p.character = {
+      id: 'demo-male', fileName: 'previs-male.glb', fileSize: 0,
+      gltfInfo: { meshes: 30, materials: 8, bones: 17, hasSkin: true, hasAnimations: 0 },
+      appearanceSource: {
+        gender: 'female', height: 1.72, build: 0.6, faceShape: 'heart',
+        eyeSize: 1.15, browThickness: 0.9, noseSize: 0.95, mouthWidth: 1.05,
+        hairStyle: 'long', hairColor: '#112233', skinColor: '#d4aa8c',
+        clothColor: '#8f7f9e', skinRoughness: 0.5,
+      },
+    };
+    const { project, warnings } = parseProjectFile(serializeProject(p));
+    expect(warnings).toEqual([]);
+    expect(project.character?.appearanceSource).toEqual(p.character.appearanceSource);
+    // 按配方重建出的几何与原配方一致
+    const demo = buildDemoCharacter('female', project.character!.appearanceSource!);
+    try {
+      expect(demo.meta.appearanceSource).toEqual(p.character.appearanceSource);
+      expect(demo.scene.userData['themable']).toBe(true);
+    } finally {
+      demo.dispose();
+    }
+  });
+
+  it('外观配方里的非法值在解析时被规范化而非报错', () => {
+    const p = createEmptyProject();
+    p.character = {
+      id: 'demo-bad', fileName: 'previs-male.glb', fileSize: 0,
+      gltfInfo: { meshes: 30, materials: 8, bones: 17, hasSkin: true, hasAnimations: 0 },
+      appearanceSource: { height: 99, faceShape: 'nope' as never, skinColor: 'bogus' } as never,
+    };
+    const { project, warnings } = parseProjectFile(serializeProject(p));
+    expect(warnings).toEqual([]);
+    expect(project.character?.appearanceSource?.height).toBe(RANGES.height.max);
+    expect(project.character?.appearanceSource?.faceShape).toBe(DEFAULT_APPEARANCE.faceShape);
+    expect(project.character?.appearanceSource?.skinColor).toBe(DEFAULT_APPEARANCE.skinColor);
   });
 
   it('在项目解析阶段拒绝缺失骨架元数据或无效手绘重建配方', () => {

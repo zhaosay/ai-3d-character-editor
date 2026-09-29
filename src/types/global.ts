@@ -1,3 +1,5 @@
+import type { Appearance } from '../core/character/appearance';
+
 export type Vec3Tuple = [number, number, number];
 export type QuatTuple = [number, number, number, number];
 
@@ -19,4 +21,6 @@ export interface CharacterMeta {
     landmarks: Partial<Record<'head' | 'neck' | 'shoulder' | 'elbow' | 'wrist' | 'hips' | 'knee' | 'ankle', { x: number; y: number }>>;
     options: { headR: number; thickness: number };
   };
+  /** Rebuild recipe for editor-generated procedural actors saved in project.json. */
+  appearanceSource?: Appearance;
 }

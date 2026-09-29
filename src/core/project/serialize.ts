@@ -4,6 +4,7 @@ import type { AnimationData } from '../animation/types';
 import { validateAnimation } from '../animation/types';
 import type { CharacterMeta } from '../../types/global';
 import { LANDMARK_ORDER, validateSketchLandmarks, type SketchDraftData, type SketchSourceData } from '../rig/sketchToSpec';
+import { clampAppearance, type Appearance } from '../character/appearance';
 
 /** project.json 序列化（P4）：角色只存引用（文件名/大小/骨骼数），不嵌入 GLB 二进制。 */
 export function serializeProject(p: ProjectV1): string {
@@ -85,7 +86,19 @@ function normalizeCharacter(value: unknown): CharacterMeta | null {
     const thickness = Number.isFinite(source.options?.thickness) ? Math.min(Math.max(source.options!.thickness, 0.7), 1.3) : 1;
     sketchSource = { landmarks: structuredClone(landmarks), options: { headR, thickness } };
   }
-  return { ...raw, gltfInfo: { ...info } as CharacterMeta['gltfInfo'], ...(sketchSource ? { sketchSource } : {}) } as CharacterMeta;
+  let appearanceSource: Appearance | undefined;
+  if (raw.appearanceSource !== undefined && raw.appearanceSource !== null) {
+    if (typeof raw.appearanceSource !== 'object' || Array.isArray(raw.appearanceSource)) {
+      throw new Error('project.json 校验失败：character.appearanceSource 格式无效');
+    }
+    appearanceSource = clampAppearance(raw.appearanceSource as Partial<Appearance>);
+  }
+  return {
+    ...raw,
+    gltfInfo: { ...info } as CharacterMeta['gltfInfo'],
+    ...(sketchSource ? { sketchSource } : {}),
+    ...(appearanceSource ? { appearanceSource } : {}),
+  } as CharacterMeta;
 }
 
 function normalizeSketchDraft(value: unknown): SketchDraftData | null {

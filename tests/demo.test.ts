@@ -43,13 +43,14 @@ describe.each([['male'], ['female']] as Array<[DemoGender]>)('demo character (%s
     expect(meta.fileName).toMatch(gender === 'female' ? /female/ : /male/);
   });
 
-  it('站立地面：脚底 y≈0，身高约 1.83', () => {
+  it('站立地面：脚底 y≈0，身高与 appearance.height 一致', () => {
     const { scene } = buildDemoCharacter(gender);
     const box = new THREE.Box3().setFromObject(scene);
     expect(box.min.y).toBeCloseTo(0, 2);
+    // 默认 appearance.height = 1.78（身高不再是硬编码 1.83）
     const height = box.max.y - box.min.y;
-    expect(height).toBeGreaterThan(1.8);
-    expect(height).toBeLessThan(1.9);
+    expect(height).toBeGreaterThan(1.7);
+    expect(height).toBeLessThan(1.86);
   });
 
   it('IK 检测出 4 链', () => {
@@ -72,13 +73,16 @@ describe('demo 男女体型差异', () => {
     expect(wx(female, 'UpperArm_L')).toBeCloseTo(0.19, 3);
   });
 
-  it('女版网格更多（长发/发髻/胸型），男女文件名不同', () => {
+  it('男女网格与文件名不同；发型不再与性别硬绑定', () => {
     const m = buildDemoCharacter('male');
     const f = buildDemoCharacter('female');
-    expect(f.meta.gltfInfo.meshes).toBeGreaterThan(m.meta.gltfInfo.meshes);
+    // 网格数量差异现在由发型决定，性别本身只影响比例
     expect(f.meta.fileName).not.toBe(m.meta.fileName);
+    const longHair = buildDemoCharacter('male', { hairStyle: 'long' });
+    expect(longHair.meta.gltfInfo.meshes).toBeGreaterThan(m.meta.gltfInfo.meshes);
     m.dispose();
     f.dispose();
+    longHair.dispose();
   });
 
   it.each([['male'], ['female']] as Array<[DemoGender]>)('%s uses a shaped face and non-metallic skin shading', (gender) => {

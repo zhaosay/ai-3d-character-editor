@@ -6,9 +6,11 @@ import { useIKStore } from '../../stores/ikStore';
 import { useSelectionStore } from '../../stores/selectionStore';
 import { useSkeletonStore } from '../../stores/skeletonStore';
 import { useThemeStore } from '../../stores/themeStore';
+import { useAppearanceStore } from '../../stores/appearanceStore';
 import { detectIKChains } from '../../core/ik/chains';
 import { buildSkeletonTree } from '../../core/skeleton/buildSkeletonTree';
 import { readTheme } from '../../core/theme/theme';
+import { clampAppearance, type Appearance } from '../../core/character/appearance';
 import type { CharacterMeta } from '../../types/global';
 
 let prevDispose: (() => void) | null = null;
@@ -25,6 +27,10 @@ export function activateCharacter(meta: CharacterMeta, scene: THREE.Group, dispo
   useIKStore.getState().initChains(detectIKChains(snap));
   const theme = readTheme(scene);
   if (theme) useThemeStore.getState().init(theme.skin, theme.cloth);
+  const appearance = (scene.userData['appearance'] as Appearance | undefined)
+    ?? meta.appearanceSource
+    ?? null;
+  if (appearance) useAppearanceStore.getState().replace(clampAppearance(appearance));
   const anims = useAnimationStore.getState();
   if (anims.animations.length === 0) anims.createAnimation('Take 1');
   else anims.setTime(0);

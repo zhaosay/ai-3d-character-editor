@@ -9,6 +9,7 @@ import { BoneDetails } from '../inspector/BoneDetails';
 import { ThemePanel } from '../inspector/ThemePanel';
 import { RenderPanel } from '../inspector/RenderPanel';
 import { FacePanel } from '../inspector/FacePanel';
+import { AppearancePanel } from '../inspector/AppearancePanel';
 import { IdlePanel } from '../ai/IdlePanel';
 import { TransformPanel } from '../inspector/TransformPanel';
 import { IKPanel } from '../inspector/IKPanel';
@@ -314,6 +315,7 @@ export function EditorShell() {
               </div>
               <div id="inspector-panel-character" role="tabpanel" aria-label="角色" hidden={inspectorTab !== 'character'}>
                 <ThemePanel />
+                <AppearancePanel />
                 <FacePanel />
                 <IdlePanel />
                 <TransformPanel />
