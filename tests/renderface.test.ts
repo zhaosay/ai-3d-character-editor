@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { useViewportStore } from '../src/stores/viewportStore';
 import { buildPreviewEnv } from '../src/core/render/previewEnv';
-import { hasMorphTargets, listMorphTargets, resetMorphs, setMorphInfluence, findBlinkTargets, blinkWeight, BLINK_PERIOD } from '../src/core/face/morphs';
+import { applyFaceTracks, hasMorphTargets, listMorphTargets, resetMorphs, setMorphInfluence, findBlinkTargets, blinkWeight, BLINK_PERIOD } from '../src/core/face/morphs';
 
 describe('render store 钳制', () => {
   it('曝光/灯光越界钳制，非法值回退', () => {
@@ -71,14 +71,25 @@ describe('face morphs', () => {
     expect(resetMorphs(g)).toBe(2);
     expect(listMorphTargets(g).every((m) => m.value === 0)).toBe(true);
   });
+
+  it('morph 轨道按稳定网格路径和名称写入另一份重载角色', () => {
+    const source = morphMesh();
+    const target = listMorphTargets(source).find((item) => item.name === 'smile')!;
+    const reloaded = morphMesh();
+    const tracks = [{ meshPath: target.meshPath, targetName: target.name, keys: [{ time: 0, value: 0, interp: 'linear' as const }, { time: 2, value: 1, interp: 'linear' as const }] }];
+    applyFaceTracks(reloaded, tracks, 1);
+    const current = listMorphTargets(reloaded).find((item) => item.name === 'smile')!;
+    expect(current.value).toBeCloseTo(0.5);
+    expect(target.meshUuid).not.toBe(current.meshUuid);
+  });
 });
 
 describe('blink', () => {
   it('目标匹配 ARKit 命名', () => {
     const targets = [
-      { meshUuid: 'a', meshName: 'Head', index: 0, name: 'eyeBlinkLeft', value: 0 },
-      { meshUuid: 'a', meshName: 'Head', index: 1, name: 'eyeBlinkRight', value: 0 },
-      { meshUuid: 'a', meshName: 'Head', index: 2, name: 'mouthSmile', value: 0 },
+      { targetId: '0#eyeBlinkLeft', meshPath: '0', meshUuid: 'a', meshName: 'Head', index: 0, name: 'eyeBlinkLeft', value: 0 },
+      { targetId: '0#eyeBlinkRight', meshPath: '0', meshUuid: 'a', meshName: 'Head', index: 1, name: 'eyeBlinkRight', value: 0 },
+      { targetId: '0#mouthSmile', meshPath: '0', meshUuid: 'a', meshName: 'Head', index: 2, name: 'mouthSmile', value: 0 },
     ];
     const found = findBlinkTargets(targets);
     expect(found.map((f) => f.name).sort()).toEqual(['eyeBlinkLeft', 'eyeBlinkRight']);

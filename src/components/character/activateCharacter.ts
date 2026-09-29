@@ -29,3 +29,46 @@ export function activateCharacter(meta: CharacterMeta, scene: THREE.Group, dispo
   if (anims.animations.length === 0) anims.createAnimation('Take 1');
   else anims.setTime(0);
 }
+
+/** 清除角色但保留已打开项目的动画，避免它们继续作用到旧角色。 */
+export function deactivateCharacter() {
+  prevDispose?.();
+  prevDispose = null;
+  useCharacterStore.getState().clear();
+  useSkeletonStore.getState().setSnapshot(null);
+  useSelectionStore.getState().select(null);
+  useIKStore.getState().clear();
+  useHistoryStore.getState().clear();
+  useAnimationStore.setState({ playing: false, currentTime: 0 });
+}
+
+export type ProjectCharacterRestoreStatus = 'match' | 'missing' | 'mismatch' | 'sketch-restored';
+
+/** 项目没有可用角色绑定时清掉当前角色；手绘角色则从项目配方重建。 */
+export function reconcileProjectCharacter(
+  projectCharacter: CharacterMeta | null,
+  currentCharacter: CharacterMeta | null,
+  actions: {
+    clear: () => void;
+    rebuildSketch: (meta: CharacterMeta) => void;
+  },
+): ProjectCharacterRestoreStatus {
+  if (projectCharacter?.sketchSource) {
+    actions.rebuildSketch(projectCharacter);
+    return 'sketch-restored';
+  }
+  if (!projectCharacter) {
+    actions.clear();
+    return 'missing';
+  }
+  if (!currentCharacter) {
+    actions.clear();
+    return 'missing';
+  }
+  const matches = currentCharacter.fileName === projectCharacter.fileName
+    && currentCharacter.fileSize === projectCharacter.fileSize
+    && currentCharacter.gltfInfo.bones === projectCharacter.gltfInfo.bones;
+  if (matches) return 'match';
+  actions.clear();
+  return 'mismatch';
+}

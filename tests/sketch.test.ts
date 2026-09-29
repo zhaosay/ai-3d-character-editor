@@ -1,26 +1,55 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { buildSketchSpec, canvasToWorld, LANDMARK_ORDER } from '../src/core/rig/sketchToSpec';
+import { buildSketchSpec, canvasToWorld, clientToSketchPoint, findSketchPointHit, LANDMARK_ORDER, restoreSketchDraft, STANDARD_SKETCH_POSE, validateSketchLandmarks } from '../src/core/rig/sketchToSpec';
 import { buildRigged } from '../src/core/rig/skinnedRig';
 import { buildSkeletonTree } from '../src/core/skeleton/buildSkeletonTree';
 import { detectIKChains } from '../src/core/ik/chains';
+import { buildSketchCharacter } from '../src/services/sketch/buildSketchCharacter';
+import { useThemeStore } from '../src/stores/themeStore';
 import type { SketchPoint } from '../src/core/rig/sketchToSpec';
 
 /** 画满画布的标准站姿（头顶 y≈40，脚 y≈500） */
 function stdPose(): Record<string, SketchPoint> {
-  return {
-    head: { x: 200, y: 40 },
-    neck: { x: 200, y: 110 },
-    shoulder: { x: 150, y: 130 },
-    elbow: { x: 140, y: 220 },
-    wrist: { x: 145, y: 300 },
-    hips: { x: 200, y: 280 },
-    knee: { x: 195, y: 390 },
-    ankle: { x: 195, y: 500 },
-  };
+  return structuredClone(STANDARD_SKETCH_POSE);
 }
 
 describe('sketchToSpec', () => {
+  it('resizes pointer coordinates correctly and keeps landmark hit targets usable on narrow canvases', () => {
+    const rect = { left: 10, top: 20, width: 200, height: 260 };
+    expect(clientToSketchPoint(110, 150, rect)).toEqual({ x: 200, y: 260 });
+    expect(clientToSketchPoint(0, 0, { ...rect, width: 0 })).toBeNull();
+    const points = [{ x: 200, y: 260 }, null];
+    expect(findSketchPointHit(points, { x: 230, y: 260 }, rect)).toBe(0);
+    expect(findSketchPointHit(points, { x: 250, y: 260 }, rect)).toBeNull();
+  });
+
+  it('lets a saved out-of-bounds landmark be grabbed from its visible canvas edge', () => {
+    const rect = { width: 200, height: 260 };
+    expect(findSketchPointHit([{ x: -1200, y: 260 }, null], { x: 0, y: 260 }, rect)).toBe(0);
+    expect(findSketchPointHit([{ x: 200, y: 1600 }, null], { x: 200, y: 520 }, rect)).toBe(0);
+  });
+
+  it('restores saved sketch landmarks and shape controls as an editable draft', () => {
+    const source = {
+      landmarks: stdPose(),
+      options: { headR: 0.13, thickness: 1.2 },
+    };
+    const draft = restoreSketchDraft(source);
+    expect(draft.points).toEqual(LANDMARK_ORDER.map((key) => source.landmarks[key]));
+    expect(draft.options).toEqual(source.options);
+
+    const partial = restoreSketchDraft({
+      landmarks: { head: { x: Number.NaN, y: 40 }, neck: { x: 200, y: 110 } },
+      options: { headR: 0.2, thickness: 0.4 },
+    });
+    expect(partial.points[0]).toBeNull();
+    expect(partial.points[1]).toEqual({ x: 200, y: 110 });
+    expect(partial.options).toEqual({ headR: 0.15, thickness: 0.7 });
+
+    const invalidOptions = restoreSketchDraft({ landmarks: stdPose(), options: { headR: Number.NaN, thickness: Number.POSITIVE_INFINITY } });
+    expect(invalidOptions.options).toEqual({ headR: 0.115, thickness: 1 });
+  });
+
   it('8 点生成 17 骨骼标准命名', () => {
     const { bones, warnings } = buildSketchSpec(stdPose(), { headR: 0.115, thickness: 1 });
     expect(bones).toHaveLength(17);
@@ -57,11 +86,32 @@ describe('sketchToSpec', () => {
     expect(span).toBeLessThan(1.65);
   });
 
-  it('过近两点自动拉开并警告', () => {
+  it('错误关节顺序会在建模前报错，不再静默拉伸成畸形角色', () => {
     const pose = stdPose();
     pose.elbow = { ...pose.shoulder };
-    const { warnings } = buildSketchSpec(pose, { headR: 0.115, thickness: 1 });
-    expect(warnings.join()).toMatch(/上臂/);
+    expect(validateSketchLandmarks(pose).join()).toMatch(/左肩、左肘、左腕/);
+    expect(() => buildSketchSpec(pose, { headR: 0.115, thickness: 1 })).toThrow(/左肩、左肘、左腕/);
+  });
+
+  it('关节点过近时给出可操作错误，避免生成被自动拉长的怪异肢体', () => {
+    const pose = stdPose();
+    pose.wrist = { x: pose.elbow.x + 1, y: pose.elbow.y + 1 };
+    expect(validateSketchLandmarks(pose).join()).toMatch(/左肘和左腕距离太近/);
+    expect(() => buildSketchSpec(pose, { headR: 0.115, thickness: 1 })).toThrow(/左肘和左腕距离太近/);
+  });
+
+  it('会在生成前拒绝被造型器自动拉长的短上臂，而不是通过校验后悄悄改形', () => {
+    const pose = stdPose();
+    pose.elbow = { x: pose.shoulder.x, y: pose.shoulder.y + 30 };
+    expect(validateSketchLandmarks(pose).join()).toMatch(/左肩和左肘距离太近/);
+    expect(() => buildSketchSpec(pose, { headR: 0.115, thickness: 1 })).toThrow(/左肩和左肘距离太近/);
+  });
+
+  it('会在生成前拒绝过短的颈肩距离', () => {
+    const pose = stdPose();
+    pose.shoulder = { x: pose.neck.x - 13, y: pose.neck.y };
+    expect(validateSketchLandmarks(pose).join()).toMatch(/颈部和左肩距离太近/);
+    expect(() => buildSketchSpec(pose, { headR: 0.115, thickness: 1 })).toThrow(/颈部和左肩距离太近/);
   });
 
   it('缺描点/出界抛错（不静默生成残废）', () => {
@@ -93,5 +143,23 @@ describe('sketch 建模端到端（骨骼+语义+IK）', () => {
     expect(snap.boneCount).toBe(17);
     expect(Object.values(snap.nodes).filter((n) => !n.semantic)).toEqual([]);
     expect(detectIKChains(snap).map((c) => c.id).sort()).toEqual(['arm.L', 'arm.R', 'leg.L', 'leg.R']);
+  });
+
+  it('新建手绘人物默认使用自然暖调肤色，不继承空白主题的蓝灰色', () => {
+    const before = useThemeStore.getState();
+    expect(before.skin).toBe('#d0a080');
+    expect(before.cloth).toBe('#607979');
+    const actor = buildSketchCharacter(stdPose(), { headR: 0.115, thickness: 1 });
+    try {
+      const skinMeshes: THREE.SkinnedMesh[] = [];
+      actor.scene.traverse((object) => {
+        const mesh = object as THREE.SkinnedMesh;
+        if (mesh.isSkinnedMesh && mesh.userData['themePart'] === 'skin') skinMeshes.push(mesh);
+      });
+      expect(skinMeshes.length).toBeGreaterThan(0);
+      expect((skinMeshes[0].material as THREE.MeshStandardMaterial).color.getHexString()).toBe('d0a080');
+    } finally {
+      actor.dispose();
+    }
   });
 });

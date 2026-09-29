@@ -6,6 +6,7 @@ import { useIKStore } from '../../stores/ikStore';
 import { sampleAnimation } from '../../core/animation/sampler';
 import { applySampledPose } from '../../core/animation/applyPose';
 import { applyPoseWithIK, type IKPin } from '../../core/ik/applyPoseWithIK';
+import { applyFaceTracks } from '../../core/face/morphs';
 
 /** Canvas 内：播放时推进时间并应用 pose。时间写入 store，Timeline/Inspector 跟随。 */
 export function PlaybackEngine() {
@@ -15,7 +16,7 @@ export function PlaybackEngine() {
     const st = useAnimationStore.getState();
     if (!st.playing || !sceneObject) return;
     const active = st.active();
-    if (!active || active.tracks.length === 0) {
+    if (!active || (active.tracks.length === 0 && !(active.faceTracks?.length))) {
       // 无 key 时只推进时间轴，不改 pose
       const dur = active?.duration ?? 4;
       st.setTime(st.currentTime + Math.min(delta, 0.1));
@@ -37,6 +38,7 @@ export function PlaybackEngine() {
     try {
       const pose = sampleAnimation(active, t);
       applySampledPose(sceneObject, pose);
+      applyFaceTracks(sceneObject, active.faceTracks ?? [], t);
     } catch (e) {
       // cubic 等未实现时停播并报错，避免刷屏
       st.setPlaying(false);
@@ -57,16 +59,18 @@ export function ScrubApplier() {
   useEffect(() => {
     if (!sceneObject || playing) return;
     const active = animations.find((a) => a.id === activeId) ?? animations[0];
-    if (!active || active.tracks.length === 0) return;
+    if (!active || (active.tracks.length === 0 && !(active.faceTracks?.length))) return;
     try {
       const pose = sampleAnimation(active, currentTime);
-      if (pose.size === 0) return;
-      // 启用的 IK 链跟随求解，避免 FK 覆盖造成闪一帧
-      const pins: IKPin[] = [];
-      for (const c of Object.values(useIKStore.getState().chains)) {
-        if (c?.enabled) pins.push({ def: c.def, target: [...c.target], polePoint: [...c.polePoint] });
+      if (pose.size > 0) {
+        // 启用的 IK 链跟随求解，避免 FK 覆盖造成闪一帧
+        const pins: IKPin[] = [];
+        for (const c of Object.values(useIKStore.getState().chains)) {
+          if (c?.enabled) pins.push({ def: c.def, target: [...c.target], polePoint: [...c.polePoint] });
+        }
+        applyPoseWithIK(sceneObject, pose, pins);
       }
-      applyPoseWithIK(sceneObject, pose, pins);
+      applyFaceTracks(sceneObject, active.faceTracks ?? [], currentTime);
     } catch (e) {
       console.error(e);
     }

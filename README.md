@@ -8,16 +8,24 @@
 
 ```bash
 npm install
-npm run dev        # 前端 http://localhost:5177
+npm run serve        # 推荐：常驻拉起前后端 → http://localhost:5173/
 ```
 
-可选后端（动作生成的 HTTP 通道；不启动则用本地 Mock，功能一致）：
+`serve` 用 `nohup` + PID 文件常驻，**不会随终端关闭被回收**（直接 `npm run dev` 前台跑，关掉终端就没了）。
+其余子命令：`npm run serve:status` / `serve:restart` / `serve:stop`。
+
+后端默认 8123，通常已被本机 `~/AI/bin/ai-daemon.py` 反向代理托管，脚本会自动识别并跳过自启（不会重复拉起造成端口冲突）。
+
+手动分别启动（调试用）：
 
 ```bash
+npm run dev                                        # 前端 http://localhost:5173
 python3 -m venv backend/.venv
 backend/.venv/bin/pip install -r backend/requirements.txt
 backend/.venv/bin/uvicorn main:app --app-dir backend --port 8123
 ```
+
+后端不启动则自动用本地 Mock，动作生成功能一致。
 
 验证：`npm run test`（前端 vitest）、`backend/.venv/bin/python backend/test_api.py`（后端）、`npm run build`。
 
@@ -55,6 +63,9 @@ backend/.venv/bin/uvicorn main:app --app-dir backend --port 8123
 模型只输出 `{reply, actions}` JSON 并经 `parseAction` 逐个校验；非法 action 丢弃并警告，不整体失败。
 助手面板另有一键快捷指令（左手抬高 / 下蹲 / 生成挥手动作 / 检查脚滑 / 补帧），点即发送。
 
+连接 LLM 后，`generate_motion` 会携带按时间排列的动作段（模板、动作描述、幅度、速度），由编辑器校验后驱动预演；未连接 LLM 时才使用本地规则拆解。Agent 遵循动作面板选中的本地或 HTTP Motion Provider，并把结构化分段传给后端。后端返回 `source=mock` 时使用过程式模板；返回 `source=real` 时保留其骨骼轨道，但必须先通过 AnimationData 校验。界面和项目分别记录规划来源与动作质量来源，不把模板结果标成真实动捕。
+Agent 还能在确认后单独改动作段、增删改场景道具/镜头关键帧/特效事件；提示词面板可使用当前 LLM 增强 ComfyUI 与 V-Pipe 文案的视觉风格和跨镜头连续性。
+
 ## 动作模板关键词（过程式，中英；相对各绑定静息的偏移量，T-pose/A-pose 通用）
 
 | 模板 | 关键词 |
@@ -73,8 +84,8 @@ backend/.venv/bin/uvicorn main:app --app-dir backend --port 8123
 ## 写实预览与真人资产路线
 
 - 右侧 **写实预览**面板：曝光 / 环境反射 / 主光 / 补光 / 轮廓光 / 半球光（ACES + 内置摄影棚环境，**只影响预览，不随 GLB 导出**——导出效果以目标引擎为准，浏览器验收为准）。
-- 右侧 **表情**面板：模型自带 blendshape（ARKit 等）时自动出现，可实时试权重；暂不支持打关键帧。
-- 右侧 **待机律动**面板：一键生成 4s 呼吸待机（进时间轴，可播放/导出/撤销）；自动眨眼为实时 morph 层（需模型自带 blink 类 morph，否则禁用并说明），不进关键帧。
+- 右侧 **表情**面板：模型自带 blendshape（ARKit 等）时自动出现，可实时试权重，并把指定表情/眨眼权重记录为动画关键帧；与身体共用播放头、撤销历史、项目保存和 GLB 动画导出。AI 可用当前角色真实 morph 名称单独增删关键帧。
+- 右侧 **待机律动**面板：一键生成 4s 呼吸待机（进时间轴，可播放/导出/撤销）；自动眨眼仍可实时补充，但对已有手工眨眼轨道让出控制权，且不覆盖已录制的脸部关键帧。
 - **人物资产建议**：先做**一个**写实中国人物样板（自然面部、真实皮肤贴图、头发层次、身体+面部绑定），在浏览器近景/全身/动作三档验收后再扩展。目标定**写实游戏级**；特写实拍级需要影视资产与离线渲染，与本工作流冲突，暂不做。
 - AI 照片转 3D 只适合辅助（补背面/贴图灵感），不能一步得到可编辑绑定人物；手绘捏人保留为风格化路线。
 
@@ -85,7 +96,7 @@ backend/.venv/bin/uvicorn main:app --app-dir backend --port 8123
 | Viewer / 导入 / 骨骼 / Timeline / Pose / IK | REAL | 自研采样、双骨 IK、50 步 Undo |
 | 项目存取 / GLB 导出 | REAL | 导出 clip 可拖回播放验证 |
 | Provider 链路（本地/HTTP） | REAL | 传输层真实 |
-| 动作内容（7 模板） | MOCK | 过程式正弦，`source=mock` 如实标注 |
+| 本地 / 当前 HTTP 后端动作内容 | MOCK | 当前过程式动作模板，`source=mock` 如实标注；有效的外部 `source=real` 骨骼轨道可由 Provider 接受 |
 | 语言理解 | heuristic（MOCK 智能）/ llm（配 key 后 REAL） | `meta.planner` 记录 |
 | 数学补帧 / AutoPosing / 物理检查修复 | REAL | 本地算法 |
 | AI 补帧 / 独立 retarget | 预留（MOCK） | 明确报错，不假装成功 |

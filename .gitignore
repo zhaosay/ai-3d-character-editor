@@ -25,3 +25,6 @@ __pycache__
 *.njsproj
 *.sln
 *.sw?
+
+# 本地服务（常驻，避免 shell 退出被回收）
+.run

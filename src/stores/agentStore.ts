@@ -40,12 +40,16 @@ interface AgentState {
   keys: Record<string, string>;
   ollamaModels: string[];
   log: AgentLogEntry[];
+  queuedPrompt: string | null;
+  runQueuedPromptId: number;
   setProvider: (p: AgentProvider) => void;
   setConfig: (p: Exclude<AgentProvider, 'mock'>, c: Partial<ProviderConfig>) => void;
   setApiKey: (p: Exclude<AgentProvider, 'mock'>, k: string) => void;
   setOllamaModels: (m: string[]) => void;
   pushLog: (e: Omit<AgentLogEntry, 'id'>) => void;
   clearLog: () => void;
+  queuePrompt: (prompt: string, runImmediately?: boolean) => void;
+  consumeQueuedPrompt: () => void;
 }
 
 let seq = 0;
@@ -96,6 +100,8 @@ export const useAgentStore = create<AgentState>((set) => {
     keys: {},
     ollamaModels: [],
     log: [],
+    queuedPrompt: null,
+    runQueuedPromptId: 0,
     setProvider: (provider) => set({ provider }),
     setConfig: (p, c) =>
       set((s) => {
@@ -110,5 +116,10 @@ export const useAgentStore = create<AgentState>((set) => {
       set((s) => ({ log: [{ ...e, id: seq }, ...s.log].slice(0, 30) }));
     },
     clearLog: () => set({ log: [] }),
+    queuePrompt: (queuedPrompt, runImmediately = false) => set((state) => ({
+      queuedPrompt,
+      runQueuedPromptId: state.runQueuedPromptId + (runImmediately ? 1 : 0),
+    })),
+    consumeQueuedPrompt: () => set({ queuedPrompt: null }),
   };
 });

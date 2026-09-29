@@ -24,6 +24,14 @@ describe('animation schema', () => {
     const a = createEmptyAnimation('t', 77, 2);
     expect(validateAnimation(a).length).toBeGreaterThan(0);
   });
+
+  it('非有限关键帧值和重复骨骼轨道会被拒绝', () => {
+    const a = createEmptyAnimation('t', 30, 2);
+    const badTrack = { boneName: 'Hips', position: [], rotation: [{ time: 1, value: [0, 0, Number.NaN, 1], interp: 'linear' as const }], scale: [] };
+    a.tracks.push(badTrack, structuredClone(badTrack));
+    expect(validateAnimation(a).join()).toMatch(/invalid rotation value/);
+    expect(validateAnimation(a).join()).toMatch(/duplicate track/);
+  });
 });
 
 describe('project schema', () => {

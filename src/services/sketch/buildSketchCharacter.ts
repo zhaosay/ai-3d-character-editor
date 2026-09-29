@@ -16,6 +16,9 @@ export function buildSketchCharacter(
   landmarks: Partial<Record<LandmarkKey, SketchPoint>>,
   opts: SketchOptions,
 ): SketchCharacter {
+  if (!Number.isFinite(opts.headR) || !Number.isFinite(opts.thickness)) {
+    throw new Error('手绘角色参数无效，请检查头部大小和身体粗细');
+  }
   const { bones, parts, warnings } = buildSketchSpec(landmarks, opts);
   const theme = useThemeStore.getState();
   const skinMat = new THREE.MeshStandardMaterial({ color: theme.skin, roughness: 0.7, metalness: 0.1 });
@@ -39,6 +42,7 @@ export function buildSketchCharacter(
     id: `sketch-${Date.now()}`,
     fileName: 'sketch-character.glb',
     fileSize: 0,
+    sketchSource: { landmarks: structuredClone(landmarks), options: { ...opts } },
     gltfInfo: {
       meshes: parts.length,
       materials: 3,
@@ -49,4 +53,11 @@ export function buildSketchCharacter(
   };
 
   return { scene: built.scene, meta, warnings, dispose: () => disposeRigged(built.scene) };
+}
+
+/** Rebuild an editor sketch character from the recipe stored in its project metadata. */
+export function rebuildSketchCharacter(meta: CharacterMeta): SketchCharacter {
+  if (!meta.sketchSource) throw new Error('项目角色没有手绘配方，无法重建');
+  const rebuilt = buildSketchCharacter(meta.sketchSource.landmarks, meta.sketchSource.options);
+  return { ...rebuilt, meta: { ...rebuilt.meta, ...meta } };
 }

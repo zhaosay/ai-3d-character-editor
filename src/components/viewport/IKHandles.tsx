@@ -81,8 +81,9 @@ function ChainHandles({ id }: { id: IKChainId }) {
   });
 
   const c = useIKStore((s) => s.chains[id]);
+  // 始终执行 Hook；链在渲染过程中被删除时仍保持 Hook 顺序稳定。
+  const midPos = useMidWorldPos(c?.def.midBone ?? '');
   if (!c) return null;
-  const midPos = useMidWorldPos(c.def.midBone);
 
   return (
     <group>

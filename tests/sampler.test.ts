@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sampleQuatTrack, sampleVec3Track, sampleAnimation } from '../src/core/animation/sampler';
+import { sampleFaceAnimation, sampleQuatTrack, sampleScalarTrack, sampleVec3Track, sampleAnimation } from '../src/core/animation/sampler';
 import { createEmptyAnimation } from '../src/core/animation/types';
 
 const Q0: [number, number, number, number] = [0, 0, 0, 1];
@@ -57,5 +57,14 @@ describe('sampler', () => {
     const pose = sampleAnimation(a, 2);
     expect(pose.get('Hips')?.quaternion).toEqual(Q0);
     expect(pose.has('Spine')).toBe(false);
+  });
+
+  it('标量表情轨道连续插值、step 保持且按动画时间采样', () => {
+    const keys = [{ time: 0, value: 0.2, interp: 'linear' as const }, { time: 2, value: 1, interp: 'linear' as const }];
+    expect(sampleScalarTrack(keys, 1)).toBeCloseTo(0.6);
+    expect(sampleScalarTrack([{ ...keys[0], interp: 'step' }, keys[1]], 1)).toBe(0.2);
+    const anim = createEmptyAnimation('face', 30, 2);
+    anim.faceTracks = [{ meshPath: '0', targetName: 'smile', keys }];
+    expect(sampleFaceAnimation(anim, 1).get('0#smile')).toBeCloseTo(0.6);
   });
 });

@@ -23,12 +23,13 @@ export function exportGltf(
   const clips: THREE.AnimationClip[] = [];
 
   for (const anim of animations) {
-    const hasKeys = anim.tracks.some((t) => t.rotation.length + t.position.length + t.scale.length > 0);
+    const hasKeys = anim.tracks.some((t) => t.rotation.length + t.position.length + t.scale.length > 0)
+      || (anim.faceTracks ?? []).some((track) => track.keys.length > 0);
     if (!hasKeys) {
       warnings.push(`跳过空动画 ${anim.name}`);
       continue;
     }
-    const { clip, warnings: w } = toThreeClip(anim);
+    const { clip, warnings: w } = toThreeClip(anim, sceneObject);
     if (clip.tracks.length === 0) {
       warnings.push(`跳过 ${anim.name}（无可导出轨道）`);
       continue;

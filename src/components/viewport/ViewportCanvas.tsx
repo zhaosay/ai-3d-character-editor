@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Grid, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -8,18 +8,18 @@ import { FpsMeter, HighlightSync, SkeletonOverlay, EnvAndTone } from './SceneSyn
 import { PlaybackEngine } from './PlaybackEngine';
 import { BlinkApplier } from './BlinkApplier';
 import { IKHandles, IKSolver } from './IKHandles';
+import { CameraPlayback } from './CameraPlayback';
+import { useCameraStore } from '../../stores/cameraStore';
+import { WorldStage } from './WorldStage';
 
 function CharacterPrimitive() {
   const sceneObject = useCharacterStore((s) => s.sceneObject);
-  const [, force] = useState(0);
-  useEffect(() => {
-    force((x) => x + 1);
-  }, [sceneObject]);
   if (!sceneObject) return null;
-  return <primitive object={sceneObject} />;
+  return <primitive key={sceneObject.uuid} object={sceneObject} />;
 }
 
 export function ViewportCanvas() {
+  const [canvasReady, setCanvasReady] = useState(false);
   const showGrid = useViewportStore((s) => s.showGrid);
   const shadows = useViewportStore((s) => s.shadows);
   const gridSize = useViewportStore((s) => s.gridSize);
@@ -31,10 +31,14 @@ export function ViewportCanvas() {
   const rimIntensity = useViewportStore((s) => s.rimIntensity);
   const hemiIntensity = useViewportStore((s) => s.hemiIntensity);
   const sceneObject = useCharacterStore((s) => s.sceneObject);
+  const cameraPathEnabled = useCameraStore((s) => s.enabled);
 
   return (
     <div className="relative h-full w-full bg-white">
-      <Canvas shadows={shadows} camera={{ position: [2.5, 1.8, 3.2], fov: 45 }} dpr={[1, 2]}>
+      <Canvas onCreated={({ gl }) => {
+        gl.domElement.dataset['previsViewport'] = 'true';
+        setCanvasReady(true);
+      }} fallback={<WebGLHint hidden={canvasReady} />} shadows={shadows ? 'percentage' : false} camera={{ position: [2.5, 1.8, 3.2], fov: 45 }} dpr={[1, 1.5]} gl={{ preserveDrawingBuffer: true }}>
         <color attach="background" args={['#ffffff']} />
         <hemisphereLight intensity={hemiIntensity} />
         {/* 主光（投影） */}
@@ -50,6 +54,8 @@ export function ViewportCanvas() {
         {/* 轮廓光（脑后） */}
         <directionalLight position={[-1.5, 3.5, -4]} intensity={rimIntensity} />
         <EnvAndTone />
+        <PlaybackEngine />
+        <WorldStage />
         <Suspense fallback={null}>
           <CharacterPrimitive />
         </Suspense>
@@ -68,16 +74,27 @@ export function ViewportCanvas() {
             infiniteGrid
           />
         )}
-        <OrbitControls makeDefault target={[0, 1, 0]} />
+        <OrbitControls makeDefault enabled={!cameraPathEnabled} target={[0, 1, 0]} />
         <FpsMeter />
-        <PlaybackEngine />
+        <CameraPlayback />
         <BlinkApplier />
         <IKSolver />
         <IKHandles />
         <HighlightSync sceneObject={sceneObject} />
         <SkeletonOverlay sceneObject={sceneObject} />
       </Canvas>
-      {!sceneObject && <EmptyHint />}
+      {!sceneObject && canvasReady && <EmptyHint />}
+    </div>
+  );
+}
+
+function WebGLHint({ hidden }: { hidden: boolean }) {
+  return (
+    <div role="status" aria-hidden={hidden} className="flex h-full min-h-64 items-center justify-center bg-[#f5f5f7] p-6 text-center text-sm text-zinc-600">
+      <div>
+        <div className="text-base font-semibold text-zinc-900">3D 视口暂不可用</div>
+        <p className="mt-2 max-w-sm">当前浏览器或图形环境未提供 WebGL。请启用硬件加速，或在支持 WebGL 的浏览器中重新打开。</p>
+      </div>
     </div>
   );
 }

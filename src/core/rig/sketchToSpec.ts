@@ -11,7 +11,25 @@ export interface SketchPoint {
   y: number;
 }
 
+/** Keep invalid imported points visible and recoverable at the nearest canvas edge. */
+export function clampSketchPointToCanvas(point: SketchPoint): SketchPoint {
+  return {
+    x: Math.min(Math.max(point.x, 0), SKETCH_W),
+    y: Math.min(Math.max(point.y, 0), SKETCH_H),
+  };
+}
+
 export type LandmarkKey = 'head' | 'neck' | 'shoulder' | 'elbow' | 'wrist' | 'hips' | 'knee' | 'ankle';
+
+export interface SketchSourceData {
+  landmarks: Partial<Record<LandmarkKey, SketchPoint>>;
+  options: SketchOptions;
+}
+
+export interface SketchDraftData {
+  points: Array<SketchPoint | null>;
+  options: SketchOptions;
+}
 
 export const LANDMARK_ORDER: LandmarkKey[] = ['head', 'neck', 'shoulder', 'elbow', 'wrist', 'hips', 'knee', 'ankle'];
 
@@ -25,6 +43,72 @@ export const LANDMARK_LABELS: Record<LandmarkKey, string> = {
   knee: '左膝',
   ankle: '左踝',
 };
+
+/** 可直接生成的中性站姿，也作为手绘面板的落点参考。 */
+export const STANDARD_SKETCH_POSE: Record<LandmarkKey, SketchPoint> = {
+  head: { x: 200, y: 40 }, neck: { x: 200, y: 110 }, shoulder: { x: 150, y: 130 },
+  elbow: { x: 140, y: 220 }, wrist: { x: 145, y: 300 }, hips: { x: 200, y: 280 },
+  knee: { x: 195, y: 390 }, ankle: { x: 195, y: 500 },
+};
+
+/** Restore saved project recipe as a complete editable canvas draft. */
+export function restoreSketchDraft(source: SketchSourceData): {
+  points: Array<SketchPoint | null>;
+  options: SketchOptions;
+} {
+  return {
+    points: LANDMARK_ORDER.map((key) => {
+      const point = source.landmarks[key];
+      return point && Number.isFinite(point.x) && Number.isFinite(point.y) ? { ...point } : null;
+    }),
+    options: {
+      headR: Number.isFinite(source.options?.headR) ? Math.min(Math.max(source.options.headR, 0.09), 0.15) : 0.115,
+      thickness: Number.isFinite(source.options?.thickness) ? Math.min(Math.max(source.options.thickness, 0.7), 1.3) : 1,
+    },
+  };
+}
+
+const MIN_SEGMENT_LENGTHS: Array<[LandmarkKey, LandmarkKey, number]> = [
+  ['head', 'neck', 0.08], ['neck', 'shoulder', 0.1], ['shoulder', 'elbow', 0.15],
+  ['elbow', 'wrist', 0.15], ['hips', 'knee', 0.2], ['knee', 'ankle', 0.25],
+];
+
+/** Convert pointer coordinates from the resized canvas element into sketch space. */
+export function clientToSketchPoint(
+  clientX: number,
+  clientY: number,
+  rect: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>,
+): SketchPoint | null {
+  if (!(rect.width > 0 && rect.height > 0)) return null;
+  return {
+    x: Math.min(Math.max(((clientX - rect.left) / rect.width) * SKETCH_W, 0), SKETCH_W),
+    y: Math.min(Math.max(((clientY - rect.top) / rect.height) * SKETCH_H, 0), SKETCH_H),
+  };
+}
+
+/** Pick the nearest landmark using a stable screen-space touch target on narrow canvases. */
+export function findSketchPointHit(
+  points: Array<SketchPoint | null>,
+  point: SketchPoint,
+  rect: Pick<DOMRect, 'width' | 'height'>,
+  radiusPx = 24,
+): number | null {
+  if (!(rect.width > 0 && rect.height > 0)) return null;
+  let bestIndex: number | null = null;
+  let bestDistance = radiusPx;
+  points.forEach((candidate, index) => {
+    if (!candidate) return;
+    const visible = clampSketchPointToCanvas(candidate);
+    const dx = ((visible.x - point.x) / SKETCH_W) * rect.width;
+    const dy = ((visible.y - point.y) / SKETCH_H) * rect.height;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
+}
 
 export interface SketchOptions {
   /** 头半径（米），0.09–0.15 */
@@ -43,6 +127,33 @@ export interface SketchSpec {
   bones: RigBoneSpec[];
   parts: SketchPartSpec[];
   warnings: string[];
+}
+
+/** 在建模前拒绝不可能的关节顺序，避免自动拉伸后产生难以理解的畸形角色。 */
+export function validateSketchLandmarks(landmarks: Partial<Record<LandmarkKey, SketchPoint>>): string[] {
+  const errors: string[] = [];
+  for (const k of LANDMARK_ORDER) {
+    const p = landmarks[k];
+    if (!p) errors.push(`缺少描点：${LANDMARK_LABELS[k]}（${LANDMARK_ORDER.indexOf(k) + 1}/8）`);
+    else if (!(p.x >= 0 && p.x <= SKETCH_W && p.y >= 0 && p.y <= SKETCH_H)) errors.push(`${LANDMARK_LABELS[k]}超出画布`);
+  }
+  if (errors.length > 0) return errors;
+  const p = landmarks as Record<LandmarkKey, SketchPoint>;
+  if (!(p.head.y < p.neck.y && p.neck.y < p.hips.y && p.hips.y < p.knee.y && p.knee.y < p.ankle.y)) {
+    errors.push('上下顺序不合理：头、颈、髋、膝、踝需要从上到下排列');
+  }
+  if (!(p.neck.y <= p.shoulder.y && p.shoulder.y < p.hips.y)) errors.push('左肩应位于颈部下方、髋部上方');
+  if (!(p.shoulder.x < p.neck.x - 12)) errors.push('左肩应明显位于颈部左侧');
+  if (!(p.shoulder.y < p.elbow.y && p.elbow.y < p.wrist.y)) errors.push('左肩、左肘、左腕需要从上到下排列');
+  const segmentLength = (a: LandmarkKey, b: LandmarkKey) => {
+    const [ax, ay] = canvasToWorld(p[a]);
+    const [bx, by] = canvasToWorld(p[b]);
+    return Math.hypot(bx - ax, by - ay);
+  };
+  for (const [a, b, min] of MIN_SEGMENT_LENGTHS) {
+    if (segmentLength(a, b) < min) errors.push(`${LANDMARK_LABELS[a]}和${LANDMARK_LABELS[b]}距离太近，请拉开后再生成`);
+  }
+  return errors;
 }
 
 /** 画布像素 → 世界米（正面视角，x 右为正，y 上为正）。 */
@@ -112,13 +223,8 @@ export function buildSketchSpec(
   landmarks: Partial<Record<LandmarkKey, SketchPoint>>,
   opts: SketchOptions,
 ): SketchSpec {
-  for (const k of LANDMARK_ORDER) {
-    const p = landmarks[k];
-    if (!p) throw new Error(`缺少描点：${LANDMARK_LABELS[k]}（${LANDMARK_ORDER.indexOf(k) + 1}/8）`);
-    if (!(p.x >= 0 && p.x <= SKETCH_W && p.y >= 0 && p.y <= SKETCH_H)) {
-      throw new Error(`${LANDMARK_LABELS[k]}超出画布`);
-    }
-  }
+  const validation = validateSketchLandmarks(landmarks);
+  if (validation.length > 0) throw new Error(validation[0]);
   const warnings: string[] = [];
   const headR = Math.min(Math.max(opts.headR, 0.09), 0.15);
   const thick = Math.min(Math.max(opts.thickness, 0.7), 1.3);
@@ -133,12 +239,12 @@ export function buildSketchSpec(
   let kneeL = P('knee');
   let ankleL = P('ankle');
 
-  head = ensureLength(neck, head, 0.08, '头颈', warnings);
-  shoulderL = ensureLength(neck, shoulderL, 0.1, '颈肩', warnings);
-  elbowL = ensureLength(shoulderL, elbowL, 0.15, '上臂', warnings);
-  wristL = ensureLength(elbowL, wristL, 0.15, '前臂', warnings);
-  kneeL = ensureLength(hips, kneeL, 0.2, '大腿', warnings);
-  ankleL = ensureLength(kneeL, ankleL, 0.25, '小腿', warnings);
+  head = ensureLength(neck, head, MIN_SEGMENT_LENGTHS[0][2], '头颈', warnings);
+  shoulderL = ensureLength(neck, shoulderL, MIN_SEGMENT_LENGTHS[1][2], '颈肩', warnings);
+  elbowL = ensureLength(shoulderL, elbowL, MIN_SEGMENT_LENGTHS[2][2], '上臂', warnings);
+  wristL = ensureLength(elbowL, wristL, MIN_SEGMENT_LENGTHS[3][2], '前臂', warnings);
+  kneeL = ensureLength(hips, kneeL, MIN_SEGMENT_LENGTHS[4][2], '大腿', warnings);
+  ankleL = ensureLength(kneeL, ankleL, MIN_SEGMENT_LENGTHS[5][2], '小腿', warnings);
 
   // 右侧镜像
   const shoulderR = mirrorX(shoulderL);

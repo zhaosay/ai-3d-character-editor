@@ -19,5 +19,5 @@ export const useCharacterStore = create<CharacterState>((set) => ({
   error: null,
   setCharacter: (meta, obj) => set({ meta, sceneObject: obj, error: null }),
   setError: (error) => set({ error }),
-  clear: () => set({ meta: null, sceneObject: null, error: null }),
+  clear: () => set({ meta: null, objectUrl: null, sceneObject: null, error: null }),
 }));

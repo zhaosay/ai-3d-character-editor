@@ -71,6 +71,31 @@ export function sampleVec3Track(keys: Keyframe<Vec3Tuple>[], time: number): Vec3
   return [_va.x, _va.y, _va.z];
 }
 
+export function sampleScalarTrack(keys: Keyframe<number>[], time: number): number | undefined {
+  if (keys.length === 0) return undefined;
+  const ks = sorted(keys);
+  const [pi, ni] = bracket(ks, time);
+  if (pi === ni) return ks[pi].value;
+  const a = ks[pi];
+  const b = ks[ni];
+  const mode = a.interp === 'step' ? 'step' : b.interp === 'step' ? 'step' : a.interp;
+  if (mode === 'step') return a.value;
+  if (mode === 'cubic') throw new Error('NOT_IMPLEMENTED: cubic interpolation (P7)');
+  const span = Math.max(b.time - a.time, 1e-6);
+  const t = THREE.MathUtils.clamp((time - a.time) / span, 0, 1);
+  return THREE.MathUtils.lerp(a.value, b.value, t);
+}
+
+/** Sample every facial morph track at the same project time as body animation. */
+export function sampleFaceAnimation(anim: AnimationData, time: number): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const track of anim.faceTracks ?? []) {
+    const value = sampleScalarTrack(track.keys, time);
+    if (value !== undefined) result.set(`${track.meshPath}#${track.targetName}`, value);
+  }
+  return result;
+}
+
 /** 采样整个 clip 在 time 时刻的 pose。P2 只保证 rotation；position/scale 同理可用。 */
 export function sampleAnimation(anim: AnimationData, time: number): SampledPose {
   const pose: SampledPose = new Map();

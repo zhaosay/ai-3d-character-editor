@@ -13,11 +13,11 @@ import os
 
 import httpx
 
-ALLOWED = ("wave", "bow", "march", "sword", "block", "kick", "breath", "sway")
+ALLOWED = ("wave", "bow", "march", "reach", "look", "look_left", "look_right", "raise_left", "raise_right", "turn", "orient", "sit", "squat", "kneel", "lie", "sleep", "stand", "sword", "handoff", "block", "kick", "punch", "breath", "sway")
 
 SYSTEM = """You split a character-action description into ordered motion segments.
-Reply with ONLY a JSON object: {"segments": [{"template": "wave|bow|march|sword|block|kick|breath|sway", "span": <seconds:number>, "note": "<short>"}]}
-Rules: keep input order; spans sum roughly to the given duration; unknown actions -> "sway". No prose."""
+Reply with ONLY a JSON object: {"segments": [{"template": "wave|bow|march|reach|look|look_left|look_right|raise_left|raise_right|turn|orient|sit|squat|kneel|lie|sleep|stand|sword|handoff|block|kick|punch|breath|sway", "span": <seconds:number>, "note": "<short>"}]}
+Rules: preserve input order and scene-object nouns; split approach, orientation, contact, and follow-up gaze into separate phases; for lying down to sleep without a bed, use kneel (brace/lower), lie (roll supine), then sleep; retain slow/fast and subtle/large-motion intent in each note; spans sum roughly to the given duration; unknown actions -> "sway". No prose."""
 
 
 def llm_configured() -> tuple[bool, str]:
@@ -29,7 +29,7 @@ def llm_configured() -> tuple[bool, str]:
     return True, f"{model}@{base}"
 
 
-def try_llm_plan(prompt: str, duration: float) -> tuple[list[dict] | None, str | None, str | None]:
+def try_llm_plan(prompt: str, duration: float, scene_context: str = "") -> tuple[list[dict] | None, str | None, str | None]:
     """成功 → (segments, model, None)；失败 → (None, None, warning)。"""
     ok, _ = llm_configured()
     if not ok:
@@ -46,7 +46,7 @@ def try_llm_plan(prompt: str, duration: float) -> tuple[list[dict] | None, str |
                 "temperature": 0.2,
                 "messages": [
                     {"role": "system", "content": SYSTEM},
-                    {"role": "user", "content": f"duration={duration}s\naction={prompt}"},
+                    {"role": "user", "content": f"duration={duration}s\naction={prompt}\nscene_context={scene_context}"},
                 ],
             },
             timeout=15,

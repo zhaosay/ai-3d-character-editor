@@ -172,23 +172,23 @@ export function Dropzone({ compact = false }: { compact?: boolean }) {
         </button>
       </div>
 
-      <div className="mt-2 text-left text-[11px] font-bold text-zinc-500">木偶（离线程序化）</div>
+      <div className="mt-2 text-left text-[11px] font-bold text-zinc-500">日常角色（离线可用）</div>
       <div className="mt-1 flex gap-1">
         <button
           onClick={() => handleDemo('male')}
           disabled={loading}
-          title="男武侠人物：宽肩，束发"
-          className={`${btn} flex-1 bg-emerald-700 hover:bg-emerald-600 ${isActive('demo-wuxia-male.glb')}`}
+          title="男性预演角色：短发、日常上衣和长裤"
+          className={`${btn} flex-1 bg-emerald-700 hover:bg-emerald-600 ${isActive('previs-male.glb')}`}
         >
-          木偶男{busy('示例男')}
+          男性 · 短发{busy('示例男')}
         </button>
         <button
           onClick={() => handleDemo('female')}
           disabled={loading}
-          title="女武侠人物：长发髻"
-          className={`${btn} flex-1 bg-rose-700 hover:bg-rose-600 ${isActive('demo-wuxia-female.glb')}`}
+          title="女性预演角色：中长发、日常上衣和长裤"
+          className={`${btn} flex-1 bg-rose-700 hover:bg-rose-600 ${isActive('previs-female.glb')}`}
         >
-          木偶女{busy('示例女')}
+          女性 · 中长发{busy('示例女')}
         </button>
       </div>
       {error && <div className="mt-2 text-xs text-red-500">{error}</div>}

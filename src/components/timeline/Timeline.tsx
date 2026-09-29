@@ -4,6 +4,8 @@ import { useCharacterStore } from '../../stores/characterStore';
 import { useSelectionStore } from '../../stores/selectionStore';
 import { useSkeletonStore } from '../../stores/skeletonStore';
 import { captureBoneLocal } from '../../core/animation/applyPose';
+import { useCameraStore } from '../../stores/cameraStore';
+import { useEffectsStore } from '../../stores/effectsStore';
 
 export function Timeline() {
   const animations = useAnimationStore((s) => s.animations);
@@ -12,6 +14,9 @@ export function Timeline() {
   const playing = useAnimationStore((s) => s.playing);
   const loop = useAnimationStore((s) => s.loop);
   const active = useAnimationStore((s) => s.active());
+  const cameraKeys = useCameraStore((s) => s.keyframes);
+  const allEffectEvents = useEffectsStore((s) => s.events);
+  const effectEvents = useMemo(() => allEffectEvents.filter((event) => !event.animationId || event.animationId === activeId), [allEffectEvents, activeId]);
 
   if (!active) {
     return (
@@ -29,6 +34,9 @@ export function Timeline() {
         duration={active.duration}
         currentTime={currentTime}
         tracks={active.tracks.map((t) => ({ boneName: t.boneName, times: t.rotation.map((k) => k.time) }))}
+        faceTimes={(active.faceTracks ?? []).flatMap((track) => track.keys.map((key) => ({ time: key.time, targetName: track.targetName })))}
+        cameraTimes={cameraKeys.map((key) => key.time)}
+        effectTimes={effectEvents.map((event) => ({ time: event.time, kind: event.kind }))}
       />
       <KeyPanel />
       <div className="hidden">
@@ -58,6 +66,12 @@ function CreateButton() {
 
 function TransportBar() {
   const active = useAnimationStore((s) => s.active());
+  if (!active) return null;
+  return <TransportControls key={`${active.id}:${active.duration}:${active.name}`} />;
+}
+
+function TransportControls() {
+  const active = useAnimationStore((s) => s.active());
   const currentTime = useAnimationStore((s) => s.currentTime);
   const playing = useAnimationStore((s) => s.playing);
   const loop = useAnimationStore((s) => s.loop);
@@ -71,7 +85,19 @@ function TransportBar() {
   const createAnimation = useAnimationStore((s) => s.createAnimation);
   const renameAnimation = useAnimationStore((s) => s.renameAnimation);
   const deleteAnimation = useAnimationStore((s) => s.deleteAnimation);
+  const [durationDraft, setDurationDraft] = useState(() => String(active?.duration ?? ''));
+  const [nameDraft, setNameDraft] = useState(() => active?.name ?? '');
   if (!active) return null;
+
+  const commitDuration = () => {
+    const value = Number(durationDraft);
+    if (durationDraft.trim() && Number.isFinite(value) && value >= 0.5 && value <= 120) setDuration(value);
+    setDurationDraft(String(useAnimationStore.getState().active()?.duration ?? active.duration));
+  };
+  const commitName = () => {
+    renameAnimation(active.id, nameDraft);
+    setNameDraft(useAnimationStore.getState().active()?.name ?? active.name);
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 pt-2 text-xs">
@@ -103,8 +129,10 @@ function TransportBar() {
           min={0.5}
           max={120}
           step={0.5}
-          value={active.duration}
-          onChange={(e) => setDuration(Number(e.target.value))}
+          value={durationDraft}
+          onChange={(e) => setDurationDraft(e.target.value)}
+          onBlur={commitDuration}
+          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
           className="w-16 rounded bg-zinc-100 px-1 py-0.5 text-zinc-800 outline-none ring-1 ring-zinc-300"
         />
         s
@@ -117,8 +145,10 @@ function TransportBar() {
         ))}
       </select>
       <input
-        value={active.name}
-        onChange={(e) => renameAnimation(active.id, e.target.value)}
+        value={nameDraft}
+        onChange={(e) => setNameDraft(e.target.value)}
+        onBlur={commitName}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
         title="重命名当前动画"
         className="w-28 rounded bg-zinc-100 px-1 py-1 text-xs outline-none ring-1 ring-zinc-300"
       />
@@ -141,10 +171,16 @@ function Ruler({
   duration,
   currentTime,
   tracks,
+  faceTimes,
+  cameraTimes,
+  effectTimes,
 }: {
   duration: number;
   currentTime: number;
   tracks: Array<{ boneName: string; times: number[] }>;
+  faceTimes: Array<{ time: number; targetName: string }>;
+  cameraTimes: number[];
+  effectTimes: Array<{ time: number; kind: string }>;
 }) {
   const setTime = useAnimationStore((s) => s.setTime);
   const moveRotationKey = useAnimationStore((s) => s.moveRotationKey);
@@ -212,6 +248,16 @@ function Ruler({
             style={{ left: `calc(${(k.time / duration) * 100}% - 4px)` }}
             title={`${k.boneName} @${k.time.toFixed(2)}s`}
           />
+        ))}
+        {/* 镜头轨道关键帧（蓝）：与角色动画共用播放头。 */}
+        {faceTimes.map((key, index) => (
+          <div key={`face-${index}-${key.time}`} className="absolute top-1 h-2.5 w-2.5 rotate-45 bg-rose-500 ring-1 ring-white" style={{ left: `calc(${(key.time / duration) * 100}% - 5px)` }} title={`${key.targetName} 表情关键帧 @${key.time.toFixed(2)}s`} />
+        ))}
+        {cameraTimes.map((time) => (
+          <div key={`camera-${time}`} className="absolute top-7 h-2.5 w-2.5 rounded-full bg-sky-500 ring-1 ring-white" style={{ left: `calc(${(time / duration) * 100}% - 5px)` }} title={`镜头机位 @${time.toFixed(2)}s`} />
+        ))}
+        {effectTimes.map((effect, index) => (
+          <div key={`effect-${index}-${effect.time}`} className="absolute top-2.5 h-2 w-2 rounded-sm bg-amber-500 ring-1 ring-white" style={{ left: `calc(${(effect.time / duration) * 100}% - 4px)` }} title={`${effect.kind} 特效 @${effect.time.toFixed(2)}s`} />
         ))}
         {/* 选中骨骼 key（绿，可拖） */}
         {selectedBoneName &&

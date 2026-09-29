@@ -8,7 +8,11 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "serve": "./scripts/serve.sh start",
+    "serve:stop": "./scripts/serve.sh stop",
+    "serve:restart": "./scripts/serve.sh restart",
+    "serve:status": "./scripts/serve.sh status"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",

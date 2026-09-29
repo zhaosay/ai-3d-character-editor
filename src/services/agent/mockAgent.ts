@@ -74,6 +74,10 @@ function limbPlan(limb: (typeof LIMB)[string], dir: string, deg: number): PlanRe
 }
 
 const DEG_RE = /(\d+)\s*度?/;
+const motionDuration = (text: string) => /睡|躺|卧/.test(text) ? 8 : 4;
+// 一句话预演的最低识别集合。无法精确模拟的行为仍会进入模板管线，
+// 由结果中的 source=mock 和 warnings 明确告知用户，而不是静默失败。
+const PREVIS_VERB_RE = /走|跑|转身|回头|回眸|拿起|拿着|放下|递给|看向|望向|坐下|坐到|躺|卧|起身|站起|停下|靠近|离开|挥手|鞠躬|踢|跳|舞|拔剑|挥剑|刺剑|格挡|开门|推门|拉门/;
 
 export function planMock(text: string): PlanResult {
   const t = text.trim();
@@ -82,13 +86,14 @@ export function planMock(text: string): PlanResult {
   const deg = degMatch ? Math.min(Math.max(Number(degMatch[1]), 5), 90) : 20;
 
   // 生成动作（四肢指令优先，已在下方处理；此处处理剩余的生成意图）
-  if (/生成|做个|来个|跳个|表演/.test(t) && !LIMB_PART(t)) {
+  const describesWave = /挥手|招手|wave/.test(t);
+  if (/生成|做个|来个|跳个|表演/.test(t) && (!LIMB_PART(t) || describesWave)) {
     const prompt = t
       .replace(/^(请|帮我|让角色|让人物)?(生成|做|来|跳|表演)(一个|一段|个)?/, '')
       .replace(/(吧|一下|呢)?$/, '')
       .trim();
     if (prompt) {
-      return { actions: [act('generate_motion', { prompt, duration: 4 })], reply: `调用动作生成：${prompt}`, reads };
+      return { actions: [act('generate_motion', { prompt, duration: motionDuration(prompt) })], reply: `调用动作生成：${prompt}`, reads };
     }
   }
 
@@ -179,7 +184,7 @@ export function planMock(text: string): PlanResult {
 
   // 四肢（方向判断时去掉肢体名本身，避免“左手”误判方向）
   for (const key of Object.keys(LIMB)) {
-    if (t.includes(key)) {
+    if (t.includes(key) && !describesWave) {
       const rest = t.replace(key, '');
       let dir = '上';
       if (/放下|下降/.test(rest)) dir = '放下';
@@ -205,6 +210,16 @@ export function planMock(text: string): PlanResult {
     return {
       actions: [act('create_keyframe', { bone: node.name, time })],
       reply: `在 @${time.toFixed(2)}s 为 ${node.name} 打关键帧`,
+      reads,
+    };
+  }
+
+  // 普通镜头描述也应产出可播放的预演草案，而不要求用户先说“生成动作”。
+  // 更精细的接触、视线与镜头语义会在 Shot Previs 层接入；当前只承诺模板动作。
+  if (PREVIS_VERB_RE.test(t)) {
+    return {
+      actions: [act('generate_motion', { prompt: t, duration: motionDuration(t) })],
+      reply: '已根据描述生成可播放预演草案（模板动作，可继续在时间轴修正）',
       reads,
     };
   }

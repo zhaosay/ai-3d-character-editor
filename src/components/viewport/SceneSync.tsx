@@ -20,9 +20,12 @@ export function EnvAndTone() {
   }, [gl]);
 
   useEffect(() => {
+    const previousToneMapping = gl.toneMapping;
+    const previousExposure = gl.toneMappingExposure;
     gl.toneMapping = THREE.ACESFilmicToneMapping;
     return () => {
-      gl.toneMapping = THREE.NoToneMapping;
+      gl.toneMapping = previousToneMapping;
+      gl.toneMappingExposure = previousExposure;
     };
   }, [gl]);
 
@@ -47,36 +50,45 @@ export function EnvAndTone() {
 }
 
 function setSubtreeEmissive(root: THREE.Object3D, hex: number) {
+  const original: Array<{ material: THREE.Material; color: THREE.Color; intensity: number }> = [];
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (mesh.isMesh) {
-      const mat = mesh.material as THREE.MeshStandardMaterial;
-      if (mat && 'emissive' in mat && mat.emissive) mat.emissive.setHex(hex);
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        const mat = material as THREE.MeshStandardMaterial;
+        if (mat && 'emissive' in mat && mat.emissive) {
+          original.push({ material, color: mat.emissive.clone(), intensity: mat.emissiveIntensity });
+          mat.emissive.setHex(hex);
+        }
+      }
     }
   });
+  return () => {
+    for (const item of original) {
+      const mat = item.material as THREE.MeshStandardMaterial;
+      mat.emissive.copy(item.color);
+      mat.emissiveIntensity = item.intensity;
+    }
+  };
 }
 
 export function HighlightSync({ sceneObject }: { sceneObject: THREE.Group | null }) {
   const selectedBoneId = useSelectionStore((s) => s.selectedBoneId);
-  const prev = useRef<THREE.Object3D | null>(null);
+  const restore = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    if (prev.current) {
-      setSubtreeEmissive(prev.current, 0x000000);
-      prev.current = null;
-    }
+    restore.current?.();
+    restore.current = null;
     if (sceneObject && selectedBoneId) {
       const bone = sceneObject.getObjectByProperty('uuid', selectedBoneId);
       if (bone) {
-        prev.current = bone;
-        setSubtreeEmissive(bone, 0x332200);
+        restore.current = setSubtreeEmissive(bone, 0x332200);
       }
     }
     return () => {
-      if (prev.current) {
-        setSubtreeEmissive(prev.current, 0x000000);
-        prev.current = null;
-      }
+      restore.current?.();
+      restore.current = null;
     };
   }, [sceneObject, selectedBoneId]);
 

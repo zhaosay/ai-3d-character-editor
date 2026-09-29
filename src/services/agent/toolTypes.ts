@@ -9,10 +9,19 @@ export type ToolName =
   | 'delete_keyframe'
   | 'create_animation'
   | 'generate_motion'
+  | 'revise_action_segment'
+  | 'set_scene_prop'
+  | 'set_previs_target'
+  | 'set_previs_event'
+  | 'set_camera_keyframe'
+  | 'set_previs_effect'
+  | 'set_face_keyframe'
   | 'retarget_motion'
   | 'apply_ik'
   | 'apply_inbetween'
   | 'check_physics'
+  | 'repair_joint_limit'
+  | 'repair_physics'
   | 'export_animation';
 
 export interface AgentAction {
@@ -48,10 +57,19 @@ export function isToolName(v: unknown): v is ToolName {
     v === 'delete_keyframe' ||
     v === 'create_animation' ||
     v === 'generate_motion' ||
+    v === 'revise_action_segment' ||
+    v === 'set_scene_prop' ||
+    v === 'set_previs_target' ||
+    v === 'set_previs_event' ||
+    v === 'set_camera_keyframe' ||
+    v === 'set_previs_effect' ||
+    v === 'set_face_keyframe' ||
     v === 'retarget_motion' ||
     v === 'apply_ik' ||
     v === 'apply_inbetween' ||
     v === 'check_physics' ||
+    v === 'repair_joint_limit' ||
+    v === 'repair_physics' ||
     v === 'export_animation'
   );
 }

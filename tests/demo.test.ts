@@ -80,6 +80,21 @@ describe('demo 男女体型差异', () => {
     m.dispose();
     f.dispose();
   });
+
+  it.each([['male'], ['female']] as Array<[DemoGender]>)('%s uses a shaped face and non-metallic skin shading', (gender) => {
+    const demo = buildDemoCharacter(gender);
+    const meshes: THREE.SkinnedMesh[] = [];
+    demo.scene.traverse((object) => {
+      if ((object as THREE.SkinnedMesh).isSkinnedMesh) meshes.push(object as THREE.SkinnedMesh);
+    });
+    const face = meshes.find((mesh) => mesh.geometry.name === 'head-profile');
+    expect(face).toBeDefined();
+    expect(face!.geometry.attributes['position'].count).toBeGreaterThan(200);
+    const skin = meshes.filter((mesh) => mesh.userData['themePart'] === 'skin');
+    expect(skin.some((mesh) => (mesh.material as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial)).toBe(true);
+    expect(skin.every((mesh) => (mesh.material as THREE.MeshStandardMaterial).metalness === 0)).toBe(true);
+    demo.dispose();
+  });
 });
 
 describe.each([['male'], ['female']] as Array<[DemoGender]>)('demo 蒙皮 (%s)', (gender) => {

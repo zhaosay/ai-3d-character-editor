@@ -83,4 +83,30 @@ describe('toThreeClip', () => {
     action.stop();
     mixer.uncacheClip(clip);
   });
+
+  it('表情关键帧转成可播放的 morph influence 轨道', () => {
+    const root = new THREE.Group();
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const target = geometry.attributes['position'].clone();
+    geometry.morphAttributes.position = [target];
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial());
+    mesh.name = 'Face';
+    mesh.updateMorphTargets();
+    mesh.morphTargetDictionary = { smile: 0 };
+    root.add(mesh);
+    const animation = createEmptyAnimation('Smile', 30, 1);
+    animation.faceTracks = [{ meshPath: '0', targetName: 'smile', keys: [
+      { time: 0, value: 0, interp: 'linear' }, { time: 1, value: 1, interp: 'linear' },
+    ] }];
+    const { clip, warnings } = toThreeClip(animation, root);
+    expect(warnings).toEqual([]);
+    expect(clip.tracks.map((track) => track.name)).toEqual(['Face.morphTargetInfluences[smile]']);
+    const mixer = new THREE.AnimationMixer(root);
+    const action = mixer.clipAction(clip);
+    action.play();
+    mixer.update(0.5);
+    expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0.5);
+    action.stop();
+    mixer.uncacheClip(clip);
+  });
 });

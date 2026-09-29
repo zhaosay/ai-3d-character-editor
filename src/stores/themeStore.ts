@@ -12,10 +12,10 @@ interface ThemeState {
 }
 
 export const useThemeStore = create<ThemeState>((set) => ({
-  skin: '#3d4b5c',
-  cloth: '#232b36',
-  nativeSkin: '#3d4b5c',
-  nativeCloth: '#232b36',
+  skin: '#d0a080',
+  cloth: '#607979',
+  nativeSkin: '#d0a080',
+  nativeCloth: '#607979',
   setSkin: (skin) => set({ skin }),
   setCloth: (cloth) => set({ cloth }),
   init: (nativeSkin, nativeCloth) => set({ skin: nativeSkin, cloth: nativeCloth, nativeSkin, nativeCloth }),

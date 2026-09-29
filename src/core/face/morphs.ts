@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import type { FaceTrack } from '../animation/types';
+import { sampleScalarTrack } from '../animation/sampler';
 
 /**
  * 面部 blendshape 支持（独立模块，可单测）。
@@ -7,11 +9,38 @@ import * as THREE from 'three';
  */
 
 export interface MorphTarget {
+  targetId: string;
+  meshPath: string;
   meshUuid: string;
   meshName: string;
   index: number;
   name: string;
   value: number;
+}
+
+function pathFromRoot(root: THREE.Object3D, object: THREE.Object3D): string | null {
+  const indices: number[] = [];
+  let current: THREE.Object3D | null = object;
+  while (current && current !== root) {
+    const parent: THREE.Object3D | null = current.parent;
+    if (!parent) return null;
+    const index = parent.children.indexOf(current);
+    if (index < 0) return null;
+    indices.unshift(index);
+    current = parent;
+  }
+  return current === root ? indices.join('/') : null;
+}
+
+export function resolveObjectPath(root: THREE.Object3D, path: string): THREE.Object3D | null {
+  let current: THREE.Object3D = root;
+  if (!path) return current;
+  for (const part of path.split('/')) {
+    const index = Number(part);
+    if (!Number.isInteger(index) || index < 0 || index >= current.children.length) return null;
+    current = current.children[index];
+  }
+  return current;
 }
 
 /** 列出场景中全部 morph target（mesh.morphTargetDictionary）。 */
@@ -23,11 +52,28 @@ export function listMorphTargets(root: THREE.Object3D): MorphTarget[] {
     const dict = (mesh as THREE.Mesh & { morphTargetDictionary?: Record<string, number> }).morphTargetDictionary;
     const infl = (mesh as THREE.Mesh & { morphTargetInfluences?: number[] }).morphTargetInfluences;
     if (!dict || !infl) return;
+    const meshPath = pathFromRoot(root, mesh);
+    if (meshPath === null) return;
     for (const [name, index] of Object.entries(dict)) {
-      out.push({ meshUuid: mesh.uuid, meshName: mesh.name || '(unnamed)', index, name, value: infl[index] ?? 0 });
+      out.push({ targetId: `${meshPath}#${name}`, meshPath, meshUuid: mesh.uuid, meshName: mesh.name || '(unnamed)', index, name, value: infl[index] ?? 0 });
     }
   });
   return out;
+}
+
+/** Apply saved face tracks by stable mesh child-path + morph name, not runtime UUID. */
+export function applyFaceTracks(root: THREE.Object3D, tracks: FaceTrack[], time: number): void {
+  for (const track of tracks) {
+    const weight = sampleScalarTrack(track.keys, time);
+    if (weight === undefined) continue;
+    const mesh = resolveObjectPath(root, track.meshPath) as (THREE.Mesh & {
+      morphTargetDictionary?: Record<string, number>;
+      morphTargetInfluences?: number[];
+    }) | null;
+    const index = mesh?.morphTargetDictionary?.[track.targetName];
+    if (index === undefined || !mesh?.morphTargetInfluences || index >= mesh.morphTargetInfluences.length) continue;
+    mesh.morphTargetInfluences[index] = Math.min(Math.max(weight, 0), 1);
+  }
 }
 
 export function hasMorphTargets(root: THREE.Object3D): boolean {

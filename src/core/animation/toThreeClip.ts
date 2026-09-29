@@ -12,7 +12,7 @@ export interface ClipResult {
  * three 的 track 是整轨单一插值；整轨全 step 则 STEP，否则 LINEAR。
  * cubic 关键帧整轨跳过并警告（P7 实现）。
  */
-export function toThreeClip(anim: AnimationData): ClipResult {
+export function toThreeClip(anim: AnimationData, root?: THREE.Object3D): ClipResult {
   const warnings: string[] = [];
   const tracks: THREE.KeyframeTrack[] = [];
 
@@ -55,6 +55,36 @@ export function toThreeClip(anim: AnimationData): ClipResult {
       if (keys.every((k) => k.interp === 'step')) track.setInterpolation(THREE.InterpolateDiscrete);
       tracks.push(track);
     }
+  }
+
+  for (const face of anim.faceTracks ?? []) {
+    if (!root) {
+      warnings.push(`${face.targetName} 表情轨道需要角色场景才能导出，已跳过`);
+      continue;
+    }
+    const node = face.meshPath ? face.meshPath.split('/').reduce<THREE.Object3D | null>((parent, part) => {
+      const index = Number(part);
+      return parent && Number.isInteger(index) && index >= 0 ? parent.children[index] ?? null : null;
+    }, root) : root;
+    const mesh = node as (THREE.Mesh & { morphTargetDictionary?: Record<string, number> }) | null;
+    if (!mesh?.isMesh || mesh.morphTargetDictionary?.[face.targetName] === undefined) {
+      warnings.push(`${face.targetName} 表情目标在当前角色中不存在，已跳过`);
+      continue;
+    }
+    if (face.keys.some((key) => key.interp === 'cubic')) {
+      warnings.push(`${face.targetName} 表情轨道含 cubic，已跳过（P7）`);
+      continue;
+    }
+    if (face.keys.length === 0) continue;
+    const keys = [...face.keys].sort((a, b) => a.time - b.time);
+    const nodeName = mesh.name || mesh.uuid;
+    const track = new THREE.NumberKeyframeTrack(
+      `${nodeName}.morphTargetInfluences[${face.targetName}]`,
+      keys.map((key) => key.time),
+      keys.map((key) => key.value),
+    );
+    if (keys.every((key) => key.interp === 'step')) track.setInterpolation(THREE.InterpolateDiscrete);
+    tracks.push(track);
   }
 
   const clip = new THREE.AnimationClip(anim.name, anim.duration, tracks);
