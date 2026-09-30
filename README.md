@@ -105,8 +105,36 @@ backend/.venv/bin/uvicorn main:app --app-dir backend --port 8123
 npm run serve
 
 # 3) 起 MCP server（打印 token 与客户端配置）
-MCP_TOKEN=<64位hex> node mcp/server.mjs
+#    BRIDGE_TOKEN 必须与后端、前端一致（见下方「桥接令牌」）
+BRIDGE_TOKEN=<64位hex> MCP_TOKEN=<64位hex> node mcp/server.mjs
 ```
+
+**只支持 stdio 的客户端**（Claude Desktop 等）用转发进程，配置形如：
+
+```json
+{ "mcpServers": { "ai-3d-character-editor": {
+  "command": "node",
+  "args": ["/绝对路径/mcp/stdio-bridge.mjs"],
+  "env": { "MCP_URL": "http://127.0.0.1:7331/mcp", "MCP_TOKEN": "<MCP_TOKEN>" } } } }
+```
+
+### 桥接令牌（必读）
+
+后端所有会改状态的桥接端点都要求 `BRIDGE_TOKEN`（Bearer 头；WebSocket 走 `?token=`），
+**未配置时整体 fail-closed 返回 503**，不会默认放行。三处必须一致：
+
+| 位置 | 变量 |
+|---|---|
+| FastAPI 后端 | `BRIDGE_TOKEN` |
+| 前端（构建期注入） | `VITE_BRIDGE_TOKEN` |
+| MCP server | `BRIDGE_TOKEN` |
+
+前端先探 `/bridge/health` 的 `enabled` 字段，为 `false` 时**完全不发起任何请求**。
+
+⚠️ **不要高估这条边界**：本项目是局域网单用户开发工具，Vite 以 `--host` 暴露，
+注入前端的令牌对「能打开编辑器页面的人」是可见的。它挡的是**未授权的跨源盲调用**
+（局域网里任意网页随手 POST `/bridge/execute`），挡不住有意的本机/LAN 攻击者。
+不要当作多租户边界使用。
 
 把 server 启动日志里的配置加进客户端（Claude Code / Codex 等）：
 
@@ -118,6 +146,9 @@ MCP_TOKEN=<64位hex> node mcp/server.mjs
 
 安全边界：只监听回环地址、Host 头校验（防 DNS rebinding）、Bearer token 常量时间比较、
 工具名白名单、请求体上限。编辑器未打开时工具调用会**立即**返回明确错误而非挂起。
+
+后端 `/bridge/*` 的 `/pending` 采用 **claim 语义**：请求被取走即出队并转入
+`_claimed`，因此**多个浏览器标签页不会重复执行同一个写操作**（重复插关键帧、重复导出处）。
 
 ### 工具契约与双层披露
 

@@ -46,6 +46,55 @@ describe('桥接请求校验（浏览器侧）', () => {
   });
 });
 
+describe('桥接鉴权与去重（防止未授权驱动 + 多标签页重复执行）', () => {
+  const bridgePy = readFileSync(resolve(ROOT, 'backend/bridge.py'), 'utf8');
+  const clientTs = readFileSync(resolve(ROOT, 'src/services/agent/bridgeClient.ts'), 'utf8');
+  const serverJs = readFileSync(resolve(ROOT, 'mcp/server.mjs'), 'utf8');
+
+  it('后端所有改状态端点都要求鉴权', () => {
+    for (const fn of ['execute', 'take_pending', 'post_result']) {
+      expect(bridgePy, `${fn} 必须调用 _require_auth`).toMatch(
+        new RegExp(`async def ${fn}\\([\\s\\S]*?_require_auth\\(authorization\\)`),
+      );
+    }
+  });
+
+  it('后端 fail-closed：未配置 BRIDGE_TOKEN 时一律拒绝（503），不默认放行', () => {
+    expect(bridgePy).toContain('fail-closed');
+    expect(bridgePy).toContain('status_code=503');
+    // 只有 health 公开可读，且它只报告 enabled，不泄露任何秘密
+    expect(bridgePy).toMatch(/@router\.get\("\/health"\)[\s\S]*?def health[\s\S]*?enabled/);
+  });
+
+  it('令牌比较用常量时间，防时序侧信道', () => {
+    expect(bridgePy).toContain('hmac.compare_digest');
+    expect(bridgePy).not.toMatch(/token\s*==\s*expected/);
+  });
+
+  it('pending 采用 claim 语义：取出即出队，第二个标签页拿不到', () => {
+    expect(bridgePy).toMatch(/for rid in list\(_pending\.keys\(\)\):[\s\S]*?_pending\.pop\(rid\)/);
+    // claim 后转入 _claimed，post_result 才不会 404
+    expect(bridgePy).toContain('_claimed');
+  });
+
+  it('浏览器端携带令牌与 clientId', () => {
+    expect(clientTs).toContain('VITE_BRIDGE_TOKEN');
+    expect(clientTs).toContain('Authorization');
+    expect(clientTs).toContain('clientId=');
+  });
+
+  it('浏览器先探 health 的 enabled，未启用则完全不连接', () => {
+    expect(clientTs).toContain('/health');
+    expect(clientTs).toMatch(/data\.enabled !== true/);
+  });
+
+  it('MCP server 把 BRIDGE_TOKEN 转发给后端；未配置时给出明确指引', () => {
+    expect(serverJs).toContain('BRIDGE_TOKEN');
+    expect(serverJs).toMatch(/Authorization.*Bearer.*BRIDGE_TOKEN/s);
+    expect(serverJs).toContain('未设置 BRIDGE_TOKEN');
+  });
+});
+
 describe('Node 与 Python 工具列表一致', () => {
   const toolTypes = readFileSync(resolve(ROOT, 'src/services/agent/toolTypes.ts'), 'utf8');
   const py = readFileSync(resolve(ROOT, 'backend/bridge.py'), 'utf8');

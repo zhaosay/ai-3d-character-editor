@@ -361,31 +361,19 @@ def test_llm_unreachable_falls_back_with_warning():
             os.environ.pop(k, None)
 
 
-if __name__ == "__main__":
-    test_health()
-    test_previs_comfy_graph_uses_a_fixed_safe_node_set()
-    test_previs_reference_uses_low_denoise_img2img_graph()
-    test_previs_reference_rejects_non_png_and_oversized_dimensions()
-    test_comfy_job_uploads_and_uses_reference_image()
-    test_generate_wave()
-    test_generate_unknown_prompt_falls_back()
-    test_generate_scene_aware_look_template()
-    test_plan_directional_and_squat_templates()
-    test_weapon_handoff_template_generates_both_arm_tracks()
-    test_empty_bones_422()
-    test_bad_fps_422()
-    test_plan_multi_clause()
-    test_generate_multi_segment_merges()
-    test_generate_wuxia_templates()
-    test_plan_wuxia_combo()
-    test_plan_ground_sleep_uses_supported_ordered_phases()
-    test_quat_mul_known_value()
-    test_generate_with_rest_offsets()
-    test_llm_unreachable_falls_back_with_warning()
-    print("backend tests: 20 passed")
-
-
 # --- Agent 桥接中转（MCP ↔ 浏览器）---
+
+# 桥接默认 fail-closed：必须设置 BRIDGE_TOKEN 才允许任何会改状态的调用。
+os.environ["BRIDGE_TOKEN"] = "test-bridge-token-0123456789"
+AUTH = {"Authorization": "Bearer test-bridge-token-0123456789"}
+
+
+def _clear_bridge_state():
+    bridge._pending.clear()
+    bridge._claimed.clear()
+    bridge._results.clear()
+    bridge._clients.clear()
+    bridge._client_sockets.clear()
 
 
 def test_bridge_health_reports_tool_count():
@@ -395,23 +383,71 @@ def test_bridge_health_reports_tool_count():
     assert body["ok"] is True and body["bridge"] is True
     assert body["tools"] == len(bridge.TOOL_NAMES)
     assert body["tools"] >= 20
+    # health 公开可读，但必须如实报告鉴权是否启用，供前端决定要不要连
+    assert body["enabled"] is True
+
+
+def test_bridge_health_reports_disabled_without_token():
+    saved = os.environ.pop("BRIDGE_TOKEN", None)
+    try:
+        body = client.get("/bridge/health").json()
+        assert body["enabled"] is False
+    finally:
+        if saved is not None:
+            os.environ["BRIDGE_TOKEN"] = saved
+
+
+def test_bridge_rejects_missing_token():
+    """CORS 允许局域网任意来源，无鉴权会让任意网页驱动编辑器 —— 必须 401。"""
+    r = client.post("/bridge/execute", json={"tool": "inspect_skeleton", "args": {}})
+    assert r.status_code == 401
+
+
+def test_bridge_rejects_wrong_token():
+    r = client.post(
+        "/bridge/execute",
+        json={"tool": "inspect_skeleton", "args": {}},
+        headers={"Authorization": "Bearer wrong-token"},
+    )
+    assert r.status_code == 401
+
+
+def test_bridge_fails_closed_when_token_not_configured():
+    """未设置 BRIDGE_TOKEN 时整体关闭（503），绝不默认放行。"""
+    saved = os.environ.pop("BRIDGE_TOKEN", None)
+    try:
+        r = client.post("/bridge/execute", json={"tool": "inspect_skeleton", "args": {}}, headers=AUTH)
+        assert r.status_code == 503
+    finally:
+        if saved is not None:
+            os.environ["BRIDGE_TOKEN"] = saved
+
+
+def test_bridge_pending_requires_token():
+    assert client.get("/bridge/pending").status_code == 401
+    assert client.get("/bridge/pending", headers=AUTH).status_code == 200
+
+
+def test_bridge_result_requires_token():
+    assert client.post("/bridge/result/x", json={"ok": True}).status_code == 401
 
 
 def test_bridge_rejects_unknown_tool():
-    r = client.post("/bridge/execute", json={"tool": "rm_rf", "args": {}})
+    r = client.post("/bridge/execute", json={"tool": "rm_rf", "args": {}}, headers=AUTH)
     assert r.status_code == 400
     assert "未知工具" in r.json()["detail"]
 
 
 def test_bridge_rejects_non_object_args():
-    r = client.post("/bridge/execute", json={"tool": "inspect_skeleton", "args": [1, 2]})
+    r = client.post("/bridge/execute", json={"tool": "inspect_skeleton", "args": [1, 2]}, headers=AUTH)
     assert r.status_code == 400
     assert "args" in r.json()["detail"]
 
 
 def test_bridge_reports_editor_offline_instead_of_hanging():
     """编辑器未连接时必须立刻报错，不能挂起让 MCP 超时。"""
-    r = client.post("/bridge/execute", json={"tool": "inspect_skeleton", "args": {}})
+    _clear_bridge_state()
+    r = client.post("/bridge/execute", json={"tool": "inspect_skeleton", "args": {}}, headers=AUTH)
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is False
@@ -419,11 +455,58 @@ def test_bridge_reports_editor_offline_instead_of_hanging():
 
 
 def test_bridge_pending_is_empty_without_clients():
-    r = client.get("/bridge/pending")
+    r = client.get("/bridge/pending", headers=AUTH)
     assert r.status_code == 200
     assert r.json()["requests"] == []
 
 
 def test_bridge_rejects_unknown_result_id():
-    r = client.post("/bridge/result/does-not-exist", json={"ok": True})
+    r = client.post("/bridge/result/does-not-exist", json={"ok": True}, headers=AUTH)
     assert r.status_code == 404
+
+
+def test_bridge_pending_claims_so_second_tab_gets_nothing():
+    """多标签页去重：请求被取走即出队，第二个标签页不得重复执行写操作。"""
+    _clear_bridge_state()
+    fake = object()
+    bridge._clients.add(fake)  # 假装有编辑器在线
+    try:
+        bridge._pending["req-dup"] = {
+            "tool": "create_keyframe",
+            "args": {"bone": "spine"},
+            "idempotencyKey": "k1",
+            "created": __import__("time").monotonic(),
+        }
+        first = client.get("/bridge/pending?clientId=tabA", headers=AUTH).json()
+        assert [r["id"] for r in first["requests"]] == ["req-dup"]
+        assert first["claimedBy"] == "tabA"
+
+        second = client.get("/bridge/pending?clientId=tabB", headers=AUTH).json()
+        assert second["requests"] == [], "第二个标签页不应拿到同一请求"
+
+        # claim 之后仍可回传结果（不能因为出队就 404）
+        assert client.post("/bridge/result/req-dup", json={"ok": True}, headers=AUTH).status_code == 200
+    finally:
+        bridge._clients.discard(fake)
+        _clear_bridge_state()
+
+
+if __name__ == "__main__":
+    # 自动发现：避免新增测试被静默跳过（此前手写清单漏掉了桥接鉴权测试）
+    import sys as _sys
+    import traceback
+
+    _tests = [
+        (n, f) for n, f in sorted(globals().items())
+        if n.startswith("test_") and callable(f)
+    ]
+    _failed = 0
+    for _name, _fn in _tests:
+        try:
+            _fn()
+        except Exception:
+            _failed += 1
+            print(f"FAIL {_name}")
+            traceback.print_exc()
+    print(f"backend tests: {len(_tests) - _failed} passed, {_failed} failed")
+    _sys.exit(1 if _failed else 0)

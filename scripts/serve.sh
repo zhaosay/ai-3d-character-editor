@@ -15,13 +15,30 @@ API_PID="$RUN_DIR/api.pid"
 VITE_PORT="${VITE_PORT:-5173}"
 API_PORT="${API_PORT:-8123}"
 
+TOKEN_FILE="$RUN_DIR/bridge.token"
 mkdir -p "$RUN_DIR" "$LOG_DIR"
+
+# 桥接令牌：首次生成后持久化，三处（后端/前端/MCP）共用同一个。
+# 不设 BRIDGE_TOKEN 时后端会 fail-closed 拒绝所有桥接请求，这是有意的。
+bridge_token() {
+  if [[ -z "${BRIDGE_TOKEN:-}" && -s "$TOKEN_FILE" ]]; then
+    BRIDGE_TOKEN="$(cat "$TOKEN_FILE")"
+  fi
+  if [[ -z "${BRIDGE_TOKEN:-}" ]]; then
+    BRIDGE_TOKEN="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    printf '%s' "$BRIDGE_TOKEN" > "$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE"
+  fi
+  export BRIDGE_TOKEN
+  export VITE_BRIDGE_TOKEN="$BRIDGE_TOKEN"
+}
 
 alive() { [[ -f "$1" ]] && kill -0 "$(cat "$1")" 2>/dev/null; }
 
 port_up() { curl -s -m 3 -o /dev/null "http://127.0.0.1:$1" 2>/dev/null; }
 
 start_vite() {
+  bridge_token
   if alive "$VITE_PID"; then echo "vite 已在运行 (pid $(cat "$VITE_PID"))"; return; fi
   nohup npm run dev -- --port "$VITE_PORT" --host \
     > "$LOG_DIR/vite.log" 2>&1 &
@@ -31,11 +48,15 @@ start_vite() {
 }
 
 start_api() {
+  bridge_token
   # 8123 常年被 ~/AI/bin/ai-daemon.py 反向代理占用（它托管各项目后端）。
   # 已有服务在跑就只健康检查，不要重复拉起 uvicorn 造成端口冲突。
   if alive "$API_PID"; then echo "api 已在运行 (pid $(cat "$API_PID"))"; return; fi
   if port_up "$API_PORT"; then
     echo "api 已被本机服务代理接管 (:$API_PORT)，跳过自启"
+    if ! curl -s -m 3 "http://127.0.0.1:$API_PORT/bridge/health" | grep -q '"enabled":true'; then
+      echo "  ⚠ 代理后的后端桥接未启用（旧代码或未带 BRIDGE_TOKEN），Agent 桥接不可用；需重启代理托管的后端"
+    fi
     return
   fi
   local py="backend/.venv/bin/python"
@@ -84,6 +105,7 @@ case "${1:-start}" in
     start_vite; start_api
     wait_up "$VITE_PORT" vite port
     wait_up "$API_PORT" api health
+    echo "桥接令牌 (.run/bridge.token, 三处共用): $(cut -c1-8)…$(printf '%s' "$BRIDGE_TOKEN" | tail -c 5)"
     ;;
   stop)
     stop_one "$VITE_PID" vite
@@ -97,6 +119,8 @@ case "${1:-start}" in
     alive "$API_PID"  && echo "api:  运行 (pid $(cat "$API_PID"))"  || echo "api:  未运行"
     port_up "$VITE_PORT" && echo "  -> :$VITE_PORT 可访问" || echo "  -> :$VITE_PORT 不可访问"
     port_up "$API_PORT"  && echo "  -> :$API_PORT 可访问"  || echo "  -> :$API_PORT 不可访问"
+    curl -s -m 3 "http://127.0.0.1:$API_PORT/bridge/health" 2>/dev/null | grep -q '"enabled":true' \
+      && echo "  -> 桥接鉴权: 已启用" || echo "  -> 桥接鉴权: 未启用（Agent 桥接将不可用）"
     ;;
   *)
     echo "用法: $0 start|stop|restart|status"; exit 1

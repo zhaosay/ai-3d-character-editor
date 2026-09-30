@@ -27,6 +27,11 @@ void HERE;
 const PORT = Number(process.env.MCP_PORT ?? 7331);
 const BRIDGE = process.env.EDITOR_BRIDGE ?? 'http://127.0.0.1:5173';
 const TOKEN = process.env.MCP_TOKEN ?? randomBytes(32).toString('hex');
+/**
+ * 转发给后端 FastAPI 桥接的令牌。必须与后端的 BRIDGE_TOKEN、后端看到的
+ * 前端 VITE_BRIDGE_TOKEN 三者一致，否则 /bridge/* 会 401/503。
+ */
+const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN ?? '';
 
 /**
  * 工具契约来自 mcp/tools.schema.json（由 scripts/genToolSchemas.mjs 从
@@ -85,9 +90,15 @@ async function callBridge(tool, args, idempotencyKey) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
   try {
+    if (!BRIDGE_TOKEN) {
+      return { ok: false, error: '未设置 BRIDGE_TOKEN：本进程无法通过后端桥接鉴权。请与后端/前端使用同一个 BRIDGE_TOKEN 后重启。' };
+    }
     const res = await fetch(`${BRIDGE}/bridge/execute`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${BRIDGE_TOKEN}`,
+      },
       body: JSON.stringify({ tool, args, idempotencyKey }),
       signal: controller.signal,
     });
