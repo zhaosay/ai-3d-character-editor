@@ -75,6 +75,7 @@ export function MotionPanel() {
         ? resolveSequentialInteractionFrames(plan.segments, sceneObject, skeleton, stageProps)
         : {};
       const result = await provider.generateMotion({ prompt, skeleton, duration, fps, seed: 7, stageProps, bedInteraction, segmentInteractions,
+        sceneObject,
         groundHipLocalOffset: sceneObject && skeleton ? estimateGroundHipLocalOffset(sceneObject, skeleton, stageProps.find((prop) => prop.kind === 'room')?.position[1] ?? 0) : undefined });
       const groundY = stageProps.find((prop) => prop.kind === 'room')?.position[1] ?? 0;
       const groundedAnimation = { ...result.animation, tracks: correctGroundedLegTracks(sceneObject, result.animation,

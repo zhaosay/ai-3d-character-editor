@@ -529,6 +529,7 @@ async function generateMotion(args: Record<string, unknown>): Promise<ToolResult
     const motionProvider = motionConfig.providerId === 'http' ? new HttpMotionProvider(motionConfig.baseUrl) : mockMotion;
     const groundY = stageProps.find((prop) => prop.kind === 'room')?.position[1] ?? 0;
     const r = await motionProvider.generateMotion({ prompt: planningPrompt, skeleton: snap, duration, fps: 30, stageProps, bedInteraction, worldInteractions, segmentInteractions, plannedSegments: motionSegments, planner,
+      sceneObject,
       groundHipLocalOffset: estimateGroundHipLocalOffset(sceneObject, snap, groundY) });
     if (motionGenerationContextKey(useCharacterStore.getState().sceneObject) !== contextKey) {
       return err('STALE_CONTEXT', '等待动作生成期间角色、场景或当前动画已变化；为保护最新编辑，本次结果未应用，请重新生成');

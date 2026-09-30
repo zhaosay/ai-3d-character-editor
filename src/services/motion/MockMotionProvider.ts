@@ -2,6 +2,7 @@ import { createEmptyAnimation } from '../../core/animation/types';
 import { buildBoneMap, buildRestMap, buildRestPositionMap, generateProceduralTracks } from './procedural';
 import type { MotionProvider, MotionRequest, MotionResult } from './types';
 import { ambiguousSceneObjectWarnings, decomposeSceneAction, missingSceneObjectWarnings } from '../../core/previs/world';
+import { measureLegChain } from '../../core/ik/sitPose';
 
 /** 本地过程式 Provider：传输 REAL（纯本地），动作 MOCK（模板正弦，P6 替换）。 */
 export class MockMotionProvider implements MotionProvider {
@@ -18,6 +19,11 @@ export class MockMotionProvider implements MotionProvider {
     const bones = req.skeleton ? buildBoneMap(req.skeleton) : {};
     const rest = req.skeleton ? buildRestMap(req.skeleton) : {};
     const restPositions = req.skeleton ? buildRestPositionMap(req.skeleton) : {};
+    /**
+     * 实测腿连杆：坐姿必须按**真实骨长**解腿角，否则固定欧拉角只对单一座高成立
+     * （实测脚插地 20~42cm）。sceneObject 用于实测鞋底高度。
+     */
+    const legChain = req.skeleton ? measureLegChain(req.skeleton, 'L', req.sceneObject ?? undefined) : null;
     const actionPlan = decomposeSceneAction(req.prompt, duration, req.stageProps ?? []);
     const contextWarnings = actionPlan?.targetPropId && !req.bedInteraction
       ? ['已识别场景目标，但角色缺少可用的髋部骨骼父节点，无法把交互点转换到角色坐标']
@@ -40,7 +46,7 @@ export class MockMotionProvider implements MotionProvider {
       segmentInteractions: req.segmentInteractions,
       groundY: req.stageProps?.find((prop) => prop.kind === 'room')?.position[1] ?? 0,
       groundHipLocalOffset: req.groundHipLocalOffset,
-    }, rest, restPositions);
+    }, rest, restPositions, legChain);
     if (tracks.length === 0) {
       throw new Error('骨骼语义映射为空，无法生成（请先加载带命名骨骼的角色）');
     }

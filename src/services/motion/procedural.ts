@@ -3,6 +3,8 @@ import type { HumanoidSemantic } from '../../core/skeleton/types';
 import type { BoneTrack, Keyframe } from '../../core/animation/types';
 import type { QuatTuple, Vec3Tuple } from '../../types/global';
 import { positiveIntent, sampleWeaponAttachment, type WorldInteractionFrame } from '../../core/previs/world';
+import { sitPoseAt } from '../../core/ik/sitPose';
+import type { LegChain } from '../../core/ik/sitSolve';
 import {
   anticipationEnvelope, breathSignal, gaitCycle, gaitLeg, gaitPeriod, proximalDelay,
 } from '../../core/motion/gaits';
@@ -112,6 +114,11 @@ function schedules(
   clause = '',
   /** 该段是否「无支撑面、就地坐在/躺在地面」而非在道具上：影响腿的折叠与倒地编排。 */
   onBareGround = false,
+  /**
+   * 坐姿腿角解（由 sitPose 按真实骨长 + 实际座高解出）。
+   * 为空时回退到旧的固定角（仅用于地面盘腿 —— 那是平面两连杆无法表达的姿态）。
+   */
+  sitLeg?: { thighDeg: number; shinDeg: number; footDeg: number } | null,
 ): Schedule {
   const TAU = Math.PI * 2;
   switch (template) {
@@ -254,16 +261,27 @@ function schedules(
       // 若沿用椅姿角度（大腿 -72°、小腿 +68°，脚垂直落地），
       // 坐地面时脚会插进地面约 0.65m。
       const floor = onBareGround;
-      const thigh = floor ? -84 : -72;
-      const shin = floor ? 84 : 68;
+      /**
+       * 椅/凳坐姿：腿角由 sitPose 按**真实骨长 + 实际座高**解出，
+       * 不再用固定欧拉角 —— 固定角只对单一座高成立，实测脚骨落到 y=−0.49m。
+       * 地面盘腿是平面两连杆无法表达的姿态，仍用专门角度（sitLeg 为空时）。
+       */
+      const thigh = sitLeg ? sitLeg.thighDeg : (floor ? -84 : -72);
+      const shin = sitLeg ? sitLeg.shinDeg : (floor ? 84 : 68);
+      const foot = sitLeg ? sitLeg.footDeg : 0;
       return {
-        'hips': (t) => [(floor ? 14 : 38) * env(t), 0, 0],
-        'spine': (t) => [12 * env(t), 0, 0],
+        // 有 sitLeg 解时髋俯仰必须为 0：sitSolve 的闭式解以「髋不俯仰」为前提，
+        // 实测加 38° 髋俯仰会让脚底再陷 10cm（0.0037 → −0.099）。
+        // 坐姿本就应是挺直的，改为用 spine 前倾表达，避免与腿解算打架。
+        'hips': (t) => [(floor ? 14 : (sitLeg ? 0 : 38)) * env(t), 0, 0],
+        'spine': (t) => [(sitLeg ? 18 : 12) * env(t), 0, 0],
         'head': (t) => [-4 * env(t), 0, 0],
         'thigh.L': (t) => [thigh * env(t), 0, 0],
         'thigh.R': (t) => [thigh * env(t), 0, 0],
         'shin.L': (t) => [shin * env(t), 0, 0],
         'shin.R': (t) => [shin * env(t), 0, 0],
+        'foot.L': (t) => [foot * env(t), 0, 0],
+        'foot.R': (t) => [foot * env(t), 0, 0],
         'upperArm.L': (t) => [0, 0, 12 * env(t)],
         'upperArm.R': (t) => [0, 0, -12 * env(t)],
       };
@@ -439,9 +457,11 @@ export function generateProceduralTracks(
   opts: ProcOptions,
   rest: RestMap = {},
   restPositions: RestPositionMap = {},
+  /** 实测腿连杆；坐姿按真实骨长解腿角时需要（见 measureLegChain）。 */
+  legChain?: LegChain | null,
 ): ProcTracks {
   const segments = applyMotionModifiers(opts.segments ?? planClauses(opts.prompt, opts.duration), opts.prompt);
-  return generatePlannedTracks(bones, segments, opts.duration, opts.seed ?? 0, rest, restPositions, opts.bedInteraction, opts.worldInteractions, opts.segmentInteractions, opts.groundY, opts.groundHipLocalOffset);
+  return generatePlannedTracks(bones, segments, opts.duration, opts.seed ?? 0, rest, restPositions, opts.bedInteraction, opts.worldInteractions, opts.segmentInteractions, opts.groundY, opts.groundHipLocalOffset, legChain);
 }
 
 export function applyMotionModifiers(segments: PlanSegment[], prompt: string): PlanSegment[] {
@@ -524,6 +544,11 @@ export function generatePlannedTracks(
   segmentInteractions: Record<number, WorldInteractionFrame> = {},
   groundY = 0,
   groundHipLocalOffset?: Vec3Tuple,
+  /**
+   * 实测腿连杆（由 measureLegChain 从骨架快照量出）。
+   * 坐姿需要它才能按真实骨长解腿角 —— 没有时退回旧的固定角。
+   */
+  legChain?: LegChain | null,
 ): ProcTracks {
   const warnings: string[] = [];
   const templates: string[] = [];
@@ -566,7 +591,23 @@ export function generatePlannedTracks(
     }
     const onBareGround = !segmentInteraction
       && (template === 'sit' || template === 'lie' || template === 'sleep');
-    let sched = schedules(template, phase, segmentInteraction, seg.clause, onBareGround);
+    /**
+     * 坐姿腿角/髋高解算：有座面道具时按**真实骨长 + 实际座高**解，
+     * 取代原先的固定欧拉角（那只对单一座高成立，实测脚骨落到 y=−0.49m）。
+     * 地面盘腿（onBareGround）是平面两连杆无法表达的姿态，保持原有角度。
+     */
+    const sitSolution = template === 'sit' && !onBareGround && legChain
+      ? sitPoseAt({
+        chain: legChain,
+        seatY: segmentInteraction?.sitPosition?.[1] ?? groundY,
+        groundY,
+        progress: 1,
+      })
+      : null;
+    if (template === 'sit' && sitSolution?.degraded === 'seat-too-high') {
+      warnings.push(`座面高于腿长可达范围（超出 ${(sitSolution.solution?.float ?? 0).toFixed(2)}m），坐姿将双脚悬空`);
+    }
+    let sched = schedules(template, phase, segmentInteraction, seg.clause, onBareGround, sitSolution);
     if (template === 'wave') {
       const requestedSide = /左手|左臂/.test(seg.clause) ? 'L' : 'R';
       const fallbackSide = requestedSide === 'L' ? 'R' : 'L';
@@ -619,7 +660,23 @@ export function generatePlannedTracks(
         ? (interaction.interactionPosition ?? interaction.approachPosition)
         : template === 'orient'
           ? (/翻身|侧卧|侧身/.test(seg.clause) ? interaction.liePosition : (interaction.interactionPosition ?? interaction.approachPosition))
-        : template === 'sit' ? (interaction.sitPosition ?? interaction.interactionPosition)
+        : template === 'sit'
+          ? (() => {
+            /**
+             * 坐姿：髋**骨中心**应落在座面上方一个骨盆半径处，
+             * 而不是把骨中心直接塞进座面（那等于把骨盆埋进椅子里）。
+             * 座面高度来自道具，骨盆半径来自实测腿链 —— 两者同源，腿角才不会打架。
+             */
+            const seat = interaction.sitPosition ?? interaction.interactionPosition;
+            /**
+             * 只有**解算器真的跑过且有解**才抬骨盆半径。
+             * 无 legChain（无法量骨长）时保持旧行为：髋骨落在座面上，
+             * 免得凭一个猜出来的 16cm 把骨盆悬空（实测那是回归）。
+             */
+            if (!sitSolution || sitSolution.degraded) return seat;
+            const lift = sitSolution.boneHipY - seat[1];
+            return [seat[0], seat[1] + Math.max(0, lift), seat[2]] as Vec3Tuple;
+          })()
           : template === 'lie' || template === 'sleep' ? (interaction.liePosition ?? interaction.interactionPosition)
             : template === 'stand' ? interaction.approachPosition
             : interaction.interactionPosition;
@@ -679,9 +736,12 @@ export function generatePlannedTracks(
         const bracedKneelOffset: Vec3Tuple = groundedHipOffset.map((value, axis) =>
           value + ((axis === 1 ? -0.42 * rootIntensity : 0) - value) * 0.3) as Vec3Tuple;
         /**
-         * 坐姿髋高：从**静息髋高**直接落到坐面，而非从 groundedHipOffset 再减
+         * 坐姿髋高：从**静息髋高**直接落到座面，而非从 groundedHipOffset 再减
          * （后者已经是「站立骨盆离地 13cm」，再减会过头）。
          * 无道具时按坐在地面处理：髋中心降到骨盆半径高度。
+         *
+         * `sitPoseHipY` 来自 sitSolve 的跨距反解（有解时）—— 必须与腿角同源，
+         * 否则会出现「腿按新角转、髋还停在旧高度」导致中途插地。
          */
         const seatedHipOffset = (pelvisRadius: number): Vec3Tuple =>
           [0, groundY + pelvisRadius * rootIntensity - restPosition[1], 0] as Vec3Tuple;
@@ -689,7 +749,11 @@ export function generatePlannedTracks(
           : template === 'kneel' && /扶地|撑地/.test(seg.clause) ? bracedKneelOffset
             : template === 'kneel' ? [0, -0.42 * rootIntensity, 0] as Vec3Tuple
             : template === 'squat' ? [0, -0.32 * rootIntensity, 0] as Vec3Tuple
-              : template === 'sit' ? seatedHipOffset(0.16)
+              : template === 'sit'
+                ? (sitSolution && !sitSolution.degraded
+                  // boneHipY 是髋**骨**中心高度（= 关节高 + hipDrop）
+                  ? ([0, sitSolution.boneHipY - restPosition[1], 0] as Vec3Tuple)
+                  : seatedHipOffset(0.16))
                 : template === 'orient' && /翻身|侧卧|侧身/.test(seg.clause) ? groundedHipOffset
                   : template === 'stand' ? [0, 0, 0] as Vec3Tuple : rootOffset;
         const keys: Keyframe<Vec3Tuple>[] = [];

@@ -3,6 +3,7 @@ import type { HonestySource } from '../../types/honesty';
 import type { SkeletonSnapshot } from '../../core/skeleton/types';
 import type { WorldInteractionFrame, ContactConstraint, StageProp } from '../../core/previs/world';
 import type { PlanSegment } from './procedural';
+import type * as THREE from 'three';
 
 export interface MotionRequest {
   prompt: string;
@@ -17,6 +18,11 @@ export interface MotionRequest {
   segmentInteractions?: Record<number, WorldInteractionFrame>;
   /** Hips-parent local offset that moves the pelvis proxy vertically onto the world floor. */
   groundHipLocalOffset?: [number, number, number];
+  /**
+   * 角色场景根节点。用于**实测鞋底高度**（坐姿解算需要脚底到踝的真实距离）。
+   * 没有它时退回经验值，坐姿会有数厘米误差。
+   */
+  sceneObject?: THREE.Object3D | null;
   plannedSegments?: PlanSegment[];
   planner?: { source: 'llm'; model?: string };
 }
