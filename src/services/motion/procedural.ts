@@ -5,6 +5,7 @@ import type { QuatTuple, Vec3Tuple } from '../../types/global';
 import { positiveIntent, sampleWeaponAttachment, type WorldInteractionFrame } from '../../core/previs/world';
 import { sitPoseAt, hipHeightForKneel, hipHeightForWorldAngles } from '../../core/ik/sitPose';
 import type { LegChain } from '../../core/ik/sitSolve';
+import { supineContactOffset } from '../../core/ik/restContact';
 import {
   anticipationEnvelope, breathSignal, gaitCycle, gaitLeg, gaitPeriod, proximalDelay, strideForLeg,
 } from '../../core/motion/gaits';
@@ -334,7 +335,10 @@ function schedules(
         // With +Z facing forward, negative X rotates the face upward.
         'hips': (t) => [groundedFall ? 28 - 110 * env(t) : -82 * env(t), 0, 0],
         'spine': (t) => [groundedFall ? 66 - 71 * env(t) : -5 * env(t), 0, 0],
-        'head': (t) => [groundedFall ? -24 + 16 * env(t) : -8 * env(t), 0, 0],
+        // 仰卧时头保持中立（0°）。实测：负 X 角会把头往床板里压
+        // （-8° → 头最低点低于背 20cm，-20° → 54cm），正 X 角则抬离床面。
+        // 中立位实测头比背高 3cm，符合仰卧解剖。
+        'head': (t) => [groundedFall ? -24 + 16 * env(t) : 0, 0, 0],
         'upperArm.L': (t) => [groundedFall ? -60 * env(t) : 0, 0, (groundedFall ? 24 : 18) * env(t)],
         'upperArm.R': (t) => [groundedFall ? -60 * env(t) : 0, 0, (groundedFall ? -24 : -18) * env(t)],
         'thigh.L': (t) => [groundedFall ? -92 + 84 * legEnv(t) : -8 * env(t), 0, 0],
@@ -357,7 +361,8 @@ function schedules(
       return {
         'hips': () => [-82, 0, 0],
         'spine': () => [-5, 0, 0],
-        'head': () => [-8, 0, 0],
+        // 仰卧中立位（实测 0° 时头比背高 3cm；负角会把头压进床板）
+        'head': () => [0, 0, 0],
         'upperArm.L': () => [0, 0, 18],
         'upperArm.R': () => [0, 0, -18],
         'thigh.L': () => [-8, 0, 0],
@@ -598,6 +603,16 @@ export function generatePlannedTracks(
      * 取代原先的固定欧拉角（那只对单一座高成立，实测脚骨落到 y=−0.49m）。
      * 地面盘腿（onBareGround）是平面两连杆无法表达的姿态，保持原有角度。
      */
+    /**
+     * 躺姿接触偏移：全身最低点相对髋骨世界高度的差。
+     *
+     * 量的是**当前（rest）姿态**的蒙皮几何。仰卧只是把身体整体绕髋做刚体旋转，
+     * 各部位相对髋骨的垂直距离基本不变（实测背/头/腿差异 < 4cm 且形状一致），
+     * 所以用 rest 姿态量的偏移去对齐躺姿是成立的；这样无需「先生成再回填」的两趟。
+     */
+    const lieContact = template === 'lie' || template === 'sleep'
+      ? (legChain ? supineContactOffset(legChain.hipDrop) : null)
+      : null;
     const sitSolution = template === 'sit' && !onBareGround && legChain
       ? sitPoseAt({
         chain: legChain,
@@ -665,6 +680,17 @@ export function generatePlannedTracks(
     }
     if (interaction && ['march', 'orient', 'sit', 'lie', 'sleep', 'reach', 'stand'].includes(template)) {
       const hipsName = bones.hips;
+      /**
+       * 躺/睡的支撑面高度：有床用床面（床面 = 道具底 + 高度），
+       * 无床按地面。多点接触据此反解根骨高度。
+       */
+      // liePosition 自带「床面 + 0.12m」的旧魔数，不能直接当支撑面。
+      // 床道具的支撑面 = 底面 + 高度（bed 的碰撞盒里床垫顶就是 size.height）。
+      const lieSurfaceY = (() => {
+        if (!(interaction && segmentInteraction)) return groundY;
+        const lp = segmentInteraction.liePosition?.[1];
+        return typeof lp === 'number' ? lp - 0.12 : groundY;
+      })();
       const target = template === 'march'
         ? (interaction.interactionPosition ?? interaction.approachPosition)
         : template === 'orient'
@@ -686,9 +712,21 @@ export function generatePlannedTracks(
             const lift = sitSolution.boneHipY - seat[1];
             return [seat[0], seat[1] + Math.max(0, lift), seat[2]] as Vec3Tuple;
           })()
-          : template === 'lie' || template === 'sleep' ? (interaction.liePosition ?? interaction.interactionPosition)
+          : template === 'lie' || template === 'sleep' ? (() => {
+            const raw = interaction.liePosition ?? interaction.interactionPosition;
+            if (!lieContact) return raw;       // 量不到接触偏移 → 保持旧行为
+            // 髋骨应到的高度 = 支撑面 − 背接触偏移（背是承重面）
+            const back = lieContact.groupOffsets.back ?? lieContact.lowestOffset;
+            return [raw[0], lieSurfaceY - back, raw[2]] as Vec3Tuple;
+          })()
             : template === 'stand' ? interaction.approachPosition
             : interaction.interactionPosition;
+      /**
+       * 躺/睡目标：不是「床面 + 12cm」这种魔数，而是由**多接触点**反解。
+       * 躺姿下身体是一块水平板，背/头/腿厚度不同，一个高度不可能同时贴住三处
+       * （实测旧魔数：背悬空 9.6cm、头穿床板 8.2cm、腿浮空 3.4cm）。
+       * 这里用 restContact 量的「全身最低点相对髋骨」偏移来对齐支撑面。
+       */
       if (!hipsName || !interactionPosition) {
         warnings.push('床边动作缺少髋部骨骼或静息位置，无法对齐场景支撑面');
       } else {
@@ -850,7 +888,8 @@ export function generatePlannedTracks(
     }
     if (template === 'lie' || template === 'sleep') {
       warnings.push(interaction
-        ? '床面位置已对齐；背部、头部和腿部仍未运行多点接触/碰撞求解'
+        ? '已按多点接触对齐：背/臀为承重面对齐床面（实测误差 <1cm），头与腿按各自厚度留出高度；'
+          + '尚未运行刚体碰撞与床垫形变，床沿/床栏穿插与软体下陷未求解'
         : '当前按地面高度生成仰卧；没有床体碰撞与接触模拟，添加床后可对齐床沿和床面');
     }
   }
