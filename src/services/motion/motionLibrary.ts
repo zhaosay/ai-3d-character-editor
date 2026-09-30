@@ -63,8 +63,10 @@ export interface MotionPackage {
   manifest: MotionManifest;
 }
 
-const MANIFEST_URL = 'motions/humanoid-v1-manifest.json';
-const PACKAGE_URL = 'motions/humanoid-v1.json';
+/** 见 motionRetarget.ts 的同名常量：资源在 public/samples/motions 下。 */
+const MOTION_BASE = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+const MANIFEST_URL = `${MOTION_BASE}samples/motions/humanoid-v1-manifest.json`;
+const PACKAGE_URL = `${MOTION_BASE}samples/motions/humanoid-v1.json`;
 
 /** base64 → ArrayBuffer（不用 atob 的 latin1 截断问题）。 */
 function base64ToArrayBuffer(base64: string): ArrayBuffer {

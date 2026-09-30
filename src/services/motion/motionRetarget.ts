@@ -23,10 +23,34 @@ import {
 
 const loader = new GLTFLoader();
 
+/**
+ * 资源在 `public/samples/motions/`，而 Vite 的 public 根即站点根，
+ * 所以路径是 **`/samples/motions/...`**。
+ *
+ * 这里曾经写成不带 `samples/` 的相对路径，解析后落到站点根下的同名目录 ——
+ * 那个路径不存在，dev server 会走 SPA fallback 返回 **index.html（200）**，
+ * 于是报 `Unexpected token '<'`（把 <!doctype 当 JSON 解析）。
+ * 用 `import.meta.env.BASE_URL` 前缀，可同时兼容子路径部署。
+ */
+const BASE = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
 const PATHS = {
-  packageUrl: 'motions/humanoid-v1.json',
-  manifestUrl: 'motions/humanoid-v1-manifest.json',
+  packageUrl: `${BASE}samples/motions/humanoid-v1.json`,
+  manifestUrl: `${BASE}samples/motions/humanoid-v1-manifest.json`,
 } as const;
+
+/** 读取 JSON；若服务端回了 HTML（SPA fallback / 代理错误）给出可诊断的错误。 */
+async function readJson(res: Response, what: string): Promise<unknown> {
+  const type = res.headers.get('content-type') ?? '';
+  if (type.includes('text/html')) {
+    throw new Error(`${what}返回了 HTML 而不是 JSON（路径 ${res.url}）；请检查资源路径或 dev server 代理`);
+  }
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`${what}不是合法 JSON（${res.url}，${text.slice(0, 80)}…）`);
+  }
+}
 
 let pkgCache: MotionPackage | null = null;
 let gltfCache: { scene: THREE.Group; animations: THREE.AnimationClip[] } | null = null;
@@ -40,8 +64,8 @@ export async function loadMotionLibrary(baseUrl = ''): Promise<MotionPackage> {
   ]);
   if (!pkgRes.ok) throw new Error(`动作包下载失败：${pkgRes.status}`);
   if (!manifestRes.ok) throw new Error(`动作清单下载失败：${manifestRes.status}`);
-  const manifest = await manifestRes.json() as MotionManifest;
-  pkgCache = parseMotionPackage(await pkgRes.json() as unknown, manifest);
+  const manifest = await readJson(manifestRes, '动作清单') as MotionManifest;
+  pkgCache = parseMotionPackage(await readJson(pkgRes, '动作包'), manifest);
   return pkgCache;
 }
 
