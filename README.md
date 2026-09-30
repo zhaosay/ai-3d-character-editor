@@ -176,7 +176,8 @@ BRIDGE_TOKEN=<64位hex> MCP_TOKEN=<64位hex> node mcp/server.mjs
 ## 动作真实度
 
 步态与发力曲线按真人运动规律生成（预备/跟随、近端先动、呼吸耦合、真实步态相位），实现见 `src/core/motion/gaits.ts`。
-坐姿按**实际座高反解**两骨角度（`src/core/ik/sitPose.ts`），脚底离地从 20~42cm 降到 0.5cm 以内。
+坐/蹲/跪姿的髋高与腿角按**实测骨长反解**（`src/core/ik/sitPose.ts`），不写死深度：
+坐椅脚底离地 20~42cm → <0.5cm；深蹲脚插地 1.5~8cm → 0.6cm；跪姿膝高随身高漂移 0.26~0.38m → 0.11~0.13m。
 **诊断明细与开源参考（CMU mocap / posers / avatar-stage）见 [`docs/motion-realism.md`](docs/motion-realism.md)**。
 
 ## 人物定制（程序化示例角色）

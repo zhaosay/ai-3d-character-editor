@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import type { SkeletonSnapshot } from '../skeleton/types';
 import { hipHeightFromLegSpan, solveSitLeg, type LegChain, type SitSolution } from './sitSolve';
+
+export { hipHeightForWorldAngles, hipHeightForKneel } from './sitSolve';
 import { measureSoleDrop } from './footLock';
 
 /**

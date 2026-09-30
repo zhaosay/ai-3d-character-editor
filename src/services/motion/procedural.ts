@@ -3,7 +3,7 @@ import type { HumanoidSemantic } from '../../core/skeleton/types';
 import type { BoneTrack, Keyframe } from '../../core/animation/types';
 import type { QuatTuple, Vec3Tuple } from '../../types/global';
 import { positiveIntent, sampleWeaponAttachment, type WorldInteractionFrame } from '../../core/previs/world';
-import { sitPoseAt } from '../../core/ik/sitPose';
+import { sitPoseAt, hipHeightForKneel, hipHeightForWorldAngles } from '../../core/ik/sitPose';
 import type { LegChain } from '../../core/ik/sitSolve';
 import {
   anticipationEnvelope, breathSignal, gaitCycle, gaitLeg, gaitPeriod, proximalDelay,
@@ -745,10 +745,36 @@ export function generatePlannedTracks(
          */
         const seatedHipOffset = (pelvisRadius: number): Vec3Tuple =>
           [0, groundY + pelvisRadius * rootIntensity - restPosition[1], 0] as Vec3Tuple;
+        /**
+         * 蹲/跪的髋高**由腿角反解**，不写死深度。
+         * 写死 −0.32 / −0.42 只对某一个身高成立（实测身高 1.55→1.95m：
+         * squat 脚插地 8.0→1.5cm，kneel 脚悬空 28.4→47.0cm）。
+         * 有实测连杆时用 hipHeightForWorldAngles，髋高与腿角必然自洽。
+         * 无连杆时退回旧魔数（保持既有行为，不凭猜的骨长造新误差）。
+         */
+        const foldHipOffset = (
+          thighWorldDeg: number,
+          shinWorldDeg: number,
+          fallback: number,
+          /** 跪姿的接触面是小腿/膝，不是脚底。 */
+          onShin = false,
+        ): Vec3Tuple => legChain
+          ? ([0, (onShin
+            ? hipHeightForKneel(legChain, thighWorldDeg, shinWorldDeg, groundY)
+            : hipHeightForWorldAngles(legChain, thighWorldDeg, shinWorldDeg, groundY)) - restPosition[1], 0] as Vec3Tuple)
+          : [0, fallback * rootIntensity, 0] as Vec3Tuple;
+        /**
+         * 世界前倾角是**实测值**，含髋俯仰的贡献（局部角 ≠ 世界角）：
+         * 蹲  = hips +28°、thigh −78°、shin +92°  → 世界 thigh 50°、shin −42°
+         * 跪  = hips +28°、thigh −92°、shin +169° → 世界 thigh 64°、shin −75°
+         * 扶地跪 = hips +66°（髋先俯）            → 世界 thigh 26°、shin −37°
+         * 猜错这几个角会让髋沉到地面以下（实测膝关 → hips.y=−0.012）。
+         */
+        const handsDownKneel = /扶地|撑地/.test(seg.clause);
         const toOffset = template === 'lie' || template === 'sleep' ? groundedHipOffset
-          : template === 'kneel' && /扶地|撑地/.test(seg.clause) ? bracedKneelOffset
-            : template === 'kneel' ? [0, -0.42 * rootIntensity, 0] as Vec3Tuple
-            : template === 'squat' ? [0, -0.32 * rootIntensity, 0] as Vec3Tuple
+          : template === 'kneel' && handsDownKneel ? bracedKneelOffset
+            : template === 'kneel' ? foldHipOffset(64, -75, -0.42, true)
+            : template === 'squat' ? foldHipOffset(50, -42, -0.32)
               : template === 'sit'
                 ? (sitSolution && !sitSolution.degraded
                   // boneHipY 是髋**骨**中心高度（= 关节高 + hipDrop）

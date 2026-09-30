@@ -5,7 +5,8 @@ import { buildSkeletonTree } from '../src/core/skeleton/buildSkeletonTree';
 import type { SkeletonSnapshot } from '../src/core/skeleton/types';
 import { buildBoneMap, buildRestMap, buildRestPositionMap, generatePlannedTracks } from '../src/services/motion/procedural';
 import { indexBonesByName } from '../src/core/animation/applyPose';
-import { measureLegChain, sitPoseAt, seatedLegPose, pelvisRadiusOf } from '../src/core/ik/sitPose';
+import { measureLegChain, sitPoseAt, seatedLegPose, pelvisRadiusOf, hipHeightForKneel, hipHeightForWorldAngles } from '../src/core/ik/sitPose';
+import { standingHipHeight } from '../src/core/ik/sitSolve';
 import { measureSoleDrop } from '../src/core/ik/footLock';
 import { MockMotionProvider } from '../src/services/motion/MockMotionProvider';
 import type { StageProp } from '../src/core/previs/world';
@@ -132,6 +133,96 @@ describe('sit 脚插地量化验收', () => {
     expect(r.hipY).toBeCloseTo(pose.boneHipY, 3);
     // 且骨盆确实坐在座面上（骨中心 = 座面 + 骨盆半径，而非座面本身）
     expect(r.hipY).toBeGreaterThan(0.45);
+  });
+});
+
+describe('蹲/跪按腿角反解髋高（不写死深度）', () => {
+  /** 跑一个模板的终帧，返回脚底离地 / 小腿(膝)高度 / 髋高。 */
+  function runFold(template: 'squat' | 'kneel', height: number, useChain: boolean) {
+    const { scene } = buildDemoCharacter('male', { height } as never);
+    const snapshot = buildSkeletonTree(scene);
+    const chain = measureLegChain(snapshot, 'L', scene);
+    const res = generatePlannedTracks(
+      buildBoneMap({ nodes: Object.values(snapshot.nodes) } as never),
+      [{ t0: 0, t1: 2, template, clause: template === 'kneel' ? '跪下' : '下蹲' }],
+      2, 0, buildRestMap(snapshot), buildRestPositionMap(snapshot),
+      null, {}, {}, 0, undefined, useChain ? chain : null,
+    );
+    const bones = indexBonesByName(scene);
+    for (const tr of res.tracks) {
+      const b = bones.get(tr.boneName);
+      if (!b) continue;
+      const r = tr.rotation?.at(-1);
+      if (r && r.value.length === 4) b.quaternion.set(...(r.value as [number, number, number, number]));
+      const p = tr.position?.at(-1);
+      if (p && p.value.length === 3) b.position.set(...(p.value as [number, number, number]));
+    }
+    scene.updateWorldMatrix(true, true);
+    const wy = (n: string) => {
+      const b = bones.get(n);
+      if (!b) return Number.NaN;
+      const v = new THREE.Vector3();
+      b.getWorldPosition(v);
+      return v;
+    };
+    const fl = bones.get('Foot_L')!;
+    return {
+      sole: wy('Foot_L').y - measureSoleDrop(scene, fl),
+      shinY: wy('Shin_L').y,
+      hipY: wy('Hips').y,
+    };
+  }
+
+  it('squat 脚底贴地且不再随身高漂移', () => {
+    for (const h of [1.65, 1.75, 1.95]) {
+      const r = runFold('squat', h, true);
+      expect(Math.abs(r.sole), `squat 身高 ${h} 脚底离地 ${(r.sole * 100).toFixed(1)}cm`).toBeLessThan(0.015);
+    }
+  });
+
+  it('squat 修复前脚插地（回归基线）', () => {
+    const r = runFold('squat', 1.65, false);
+    expect(r.sole).toBeLessThan(-0.02);
+  });
+
+  it('kneel 的触地高度落在小腿/膝，而不是脚底悬空', () => {
+    for (const h of [1.65, 1.75, 1.95]) {
+      const before = runFold('kneel', h, false);
+      const after = runFold('kneel', h, true);
+      // 修复后小腿明显更低（更接近地面）
+      expect(after.shinY, `身高 ${h}`).toBeLessThan(before.shinY - 0.10);
+      // 修复后小腿高度不随身高线性漂移（旧魔数会）
+      expect(after.shinY, `身高 ${h} 跪姿小腿应贴地`).toBeLessThan(0.16);
+    }
+  });
+
+  it('kneel 修复前脚悬空（回归基线）', () => {
+    const r = runFold('kneel', 1.95, false);
+    expect(r.sole).toBeGreaterThan(0.30);
+  });
+
+  it('跪姿脚底离地是正确的解剖结果（膝着地、脚背朝后），不是缺陷', () => {
+    const r = runFold('kneel', 1.75, true);
+    // 跪地时脚底本来就该离地 ~20cm
+    expect(r.sole).toBeGreaterThan(0.10);
+  });
+});
+
+describe('hipHeightForKneel / hipHeightForWorldAngles', () => {
+  it('任意世界角下都能反解出自洽的髋高', () => {
+    const rig = makeRig();
+    const y1 = hipHeightForWorldAngles(rig.chain, 50, -42, 0);
+    const y2 = hipHeightForKneel(rig.chain, 64, -75, 0);
+    expect(y1).toBeGreaterThan(0.2);
+    expect(y2).toBeGreaterThan(0.2);
+    // 跪姿髋比蹲姿低（折叠更多）
+    expect(y2).toBeLessThan(y1);
+  });
+
+  it('腿越长，站姿髋高越高（自洽性）', () => {
+    const rig = makeRig();
+    const standing = standingHipHeight(rig.chain, 0);
+    expect(standing).toBeCloseTo(rig.chain.upper + rig.chain.lower + rig.chain.hipDrop + rig.chain.ankleAboveSole, 5);
   });
 });
 

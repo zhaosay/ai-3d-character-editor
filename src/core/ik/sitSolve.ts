@@ -207,6 +207,50 @@ export function hipHeightFromLegSpan(
   return groundY + chain.ankleAboveSole + span + chain.hipDrop;
 }
 
+/**
+ * 给定**任意**世界前倾角下的髋骨高度（脚底贴地时）。
+ *
+ * 与 `hipHeightFromLegSpan` 的区别：后者只认「站立 → 某个已解出的坐姿」这条路径；
+ * 而 squat / kneel 的腿角是**人为选定的**（不求解），仍需要据此反推髋该降到多高，
+ * 否则只能写死一个深度魔数（实测身高 1.55/1.75/1.95m 时 kneel 脚分别悬空
+ * 28.4/37.7/47.0cm，squat 插地 8.0/4.7/1.5cm）。
+ *
+ * @param thighWorldDeg 大腿世界前倾角（向前为正）
+ * @param shinWorldDeg 小腿世界前倾角（向前为正）
+ */
+export function hipHeightForWorldAngles(
+  chain: LegChain,
+  thighWorldDeg: number,
+  shinWorldDeg: number,
+  groundY: number,
+): number {
+  const rad = (v: number) => v * DEG;
+  const span = chain.upper * Math.cos(rad(thighWorldDeg)) + chain.lower * Math.cos(rad(shinWorldDeg));
+  return groundY + chain.ankleAboveSole + span + chain.hipDrop;
+}
+
+/**
+ * 跪姿专用：接触点是**小腿/膝**而不是脚底。
+ *
+ * 跪地时解剖上膝盖与小腿前侧着地、脚背朝后翘起，**脚底离地几十厘米是正确的**。
+ * 用脚底当接触面去反解会得到悬空的脚（本项目曾把 kneel 写成脚悬空 20~47cm）。
+ * 这里用「小腿长度 × cos(小腿世界角)」作为竖直跨距，使小腿贴地。
+ *
+ * @param shinWorldDeg 小腿世界前倾角（向前为正）
+ */
+export function hipHeightForKneel(
+  chain: LegChain,
+  thighWorldDeg: number,
+  shinWorldDeg: number,
+  groundY: number,
+): number {
+  const rad = (v: number) => v * DEG;
+  // 触地的是小腿中段，接触高度取小腿骨长的一小截（半径量级）
+  const shinContact = chain.lower * Math.cos(rad(shinWorldDeg));
+  const thighSpan = chain.upper * Math.cos(rad(thighWorldDeg));
+  return groundY + shinContact + thighSpan + chain.hipDrop;
+}
+
 /** 站立时（e=0）的髋高，供调用方确认起点一致。 */
 export function standingHipHeight(chain: LegChain, groundY: number): number {
   return groundY + chain.ankleAboveSole + chain.upper + chain.lower + chain.hipDrop;
