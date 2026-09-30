@@ -7,6 +7,7 @@ import { buildBoneMap, buildRestMap, buildRestPositionMap, generatePlannedTracks
 import { indexBonesByName } from '../src/core/animation/applyPose';
 import { measureLegChain, sitPoseAt, seatedLegPose, pelvisRadiusOf, hipHeightForKneel, hipHeightForWorldAngles } from '../src/core/ik/sitPose';
 import { standingHipHeight } from '../src/core/ik/sitSolve';
+import { strideForLeg } from '../src/core/motion/gaits';
 import { measureSoleDrop } from '../src/core/ik/footLock';
 import { MockMotionProvider } from '../src/services/motion/MockMotionProvider';
 import type { StageProp } from '../src/core/previs/world';
@@ -205,6 +206,49 @@ describe('蹲/跪按腿角反解髋高（不写死深度）', () => {
     const r = runFold('kneel', 1.75, true);
     // 跪地时脚底本来就该离地 ~20cm
     expect(r.sole).toBeGreaterThan(0.10);
+  });
+});
+
+describe('走路步幅/步频随体型缩放', () => {
+  function marchInfo(height: number, useChain: boolean) {
+    const { scene } = buildDemoCharacter('male', { height } as never);
+    const snapshot = buildSkeletonTree(scene);
+    const chain = measureLegChain(snapshot, 'L', scene);
+    const res = generatePlannedTracks(
+      buildBoneMap({ nodes: Object.values(snapshot.nodes) } as never),
+      [{ t0: 0, t1: 4, template: 'march', clause: '向前走' }], 4, 0,
+      buildRestMap(snapshot), buildRestPositionMap(snapshot),
+      null, {}, {}, 0, undefined, useChain ? chain : null,
+    );
+    const hips = res.tracks.find((t) => t.boneName === 'Hips')!.position!;
+    const zs = hips.map((k) => k.value[2]);
+    return {
+      leg: chain ? chain.upper + chain.lower : 0.85,
+      distance: (zs[zs.length - 1] - zs[0]) / 4, // m/s
+    };
+  }
+
+  it('高个走得更快、步子更大（修复前位移与身高无关）', () => {
+    const short = marchInfo(1.65, true);
+    const tall = marchInfo(1.95, true);
+    expect(tall.distance, `1.95m 速度 ${tall.distance.toFixed(2)} 应大于 1.65m 的 ${short.distance.toFixed(2)}`)
+      .toBeGreaterThan(short.distance);
+  });
+
+  it('修复前位移恒定（回归基线）', () => {
+    const a = marchInfo(1.65, false);
+    const b = marchInfo(1.95, false);
+    expect(Math.abs(a.distance - b.distance)).toBeLessThan(0.02);
+  });
+
+  it('步频落在真人区间 100–140 步/分', () => {
+    for (const h of [1.65, 1.75, 1.95]) {
+      const info = marchInfo(h, true);
+      const stride = strideForLeg(info.leg);
+      const cadence = (info.distance / stride) * 60;
+      expect(cadence, `身高 ${h} 步频 ${cadence.toFixed(0)}/分`).toBeGreaterThan(100);
+      expect(cadence, `身高 ${h} 步频 ${cadence.toFixed(0)}/分`).toBeLessThan(140);
+    }
   });
 });
 

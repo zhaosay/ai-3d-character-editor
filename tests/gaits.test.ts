@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   anticipationEnvelope, bell, breathSignal, clamp01, gaitCycle, gaitLeg, gaitPeriod,
-  proximalDelay, smoothstep, smootherstep,
+  proximalDelay, smoothstep, smootherstep, strideForLeg,
 } from '../src/core/motion/gaits';
 
 describe('basics', () => {
@@ -80,8 +80,8 @@ describe('breathSignal', () => {
 
 describe('gaitPeriod', () => {
   it('步幅越大周期越长，但次线性', () => {
-    const small = gaitPeriod({ stride: 0.4 });
-    const large = gaitPeriod({ stride: 1.0 });
+    const small = gaitPeriod({ stride: 0.4, legLength: 0.85 });
+    const large = gaitPeriod({ stride: 1.0, legLength: 0.85 });
     expect(large).toBeGreaterThan(small);
     expect(large).toBeLessThan(small * 1.8);
   });
@@ -92,6 +92,52 @@ describe('gaitPeriod', () => {
       expect(p).toBeGreaterThan(0.2);
       expect(p).toBeLessThan(0.9);
     }
+  });
+});
+
+describe('步幅随腿长缩放（写死魔数的替代）', () => {
+  it('步幅 = 腿长 × 0.74，落在文献 0.70~0.78 区间', () => {
+    for (const L of [0.70, 0.85, 0.89, 1.00]) {
+      const ratio = strideForLeg(L) / L;
+      expect(ratio, `L=${L} 步幅比 ${ratio.toFixed(3)}`).toBeGreaterThan(0.70);
+      expect(ratio, `L=${L} 步幅比 ${ratio.toFixed(3)}`).toBeLessThan(0.78);
+    }
+  });
+
+  it('腿越长步幅越大（修复前恒为 0.62m）', () => {
+    expect(strideForLeg(1.00)).toBeGreaterThan(strideForLeg(0.85));
+    expect(strideForLeg(0.85)).toBeGreaterThan(strideForLeg(0.70));
+  });
+
+  it('量不到腿长时退回默认腿长对应的步幅，不返回 0/NaN', () => {
+    for (const bad of [null, undefined, 0, -1, Number.NaN]) {
+      const v = strideForLeg(bad as number | null);
+      expect(Number.isFinite(v)).toBe(true);
+      expect(v).toBeGreaterThan(0.3);
+    }
+  });
+
+  it('步频落在真人区间（约 100–140 步/分）', () => {
+    for (const L of [0.80, 0.89, 1.00]) {
+      const cadence = 60 / gaitPeriod({ legLength: L });
+      expect(cadence, `L=${L} 步频 ${cadence.toFixed(0)}/分`).toBeGreaterThan(100);
+      expect(cadence, `L=${L} 步频 ${cadence.toFixed(0)}/分`).toBeLessThan(140);
+    }
+  });
+
+  it('腿越长单步越慢（SR ∝ 1/√L），不能是恒定周期', () => {
+    const short = gaitPeriod({ legLength: 0.80 });
+    const tall = gaitPeriod({ legLength: 1.00 });
+    expect(tall, `高个周期 ${tall.toFixed(3)}s 应大于矮个 ${short.toFixed(3)}s`).toBeGreaterThan(short);
+    // 步频相应下降
+    expect(60 / tall).toBeLessThan(60 / short);
+  });
+
+  it('步频不再与腿长无关（修复前恒为 0.51s / 118 步每分）', () => {
+    const a = gaitPeriod({ legLength: 0.80 });
+    const b = gaitPeriod({ legLength: 1.00 });
+    // 至少要有可见差异，而不是完全相同
+    expect(Math.abs(a - b)).toBeGreaterThan(0.03);
   });
 });
 

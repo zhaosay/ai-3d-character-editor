@@ -28,6 +28,14 @@ describe('march 真实步态', () => {
     }
   });
 
+  it('走路关键帧密度足够高，不与步态周期混叠', () => {
+    // 回归：STEP=0.25s 与步态周期 ~0.5s 正好 2:1，按 0.25s 网格采样
+    // 每次落在同一相位 → 髋部起伏被抹平成 0（实测 spread=0）。
+    // 走路必须用更细的网格（每周期 ≥ 24 点）。
+    const hips = gen('走', 4).tracks.find((t) => t.boneName === 'Hips')!.position!;
+    expect(hips.length, `走路关键帧只有 ${hips.length} 个`).toBeGreaterThan(100);
+  });
+
   it('髋部有 2× 步频的垂直起伏（静止站立时不应有）', () => {
     const walk = gen('走', 4).tracks.find((t) => t.boneName === 'Hips')!.position;
     const ys = walk.map((k) => k.value[1]);

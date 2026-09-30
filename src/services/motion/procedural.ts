@@ -6,7 +6,7 @@ import { positiveIntent, sampleWeaponAttachment, type WorldInteractionFrame } fr
 import { sitPoseAt, hipHeightForKneel, hipHeightForWorldAngles } from '../../core/ik/sitPose';
 import type { LegChain } from '../../core/ik/sitSolve';
 import {
-  anticipationEnvelope, breathSignal, gaitCycle, gaitLeg, gaitPeriod, proximalDelay,
+  anticipationEnvelope, breathSignal, gaitCycle, gaitLeg, gaitPeriod, proximalDelay, strideForLeg,
 } from '../../core/motion/gaits';
 
 export type BoneMap = Partial<Record<HumanoidSemantic, string>>;
@@ -119,6 +119,8 @@ function schedules(
    * 为空时回退到旧的固定角（仅用于地面盘腿 —— 那是平面两连杆无法表达的姿态）。
    */
   sitLeg?: { thighDeg: number; shinDeg: number; footDeg: number } | null,
+  /** 实测腿长（米）：步态的步幅/周期必须随体型缩放，不能写死。 */
+  legLength?: number | null,
 ): Schedule {
   const TAU = Math.PI * 2;
   switch (template) {
@@ -173,11 +175,11 @@ function schedules(
     case 'march': {
       // 真实步态：左右腿反相半个周期；摆动期膝「先屈后伸」；髋部 2× 步频起伏；
       // 骨盆与胸廓反向扭转；摆臂时肘始终微屈。均来自 core/motion/gaits。
-      const period = gaitPeriod({ legLength: 0.85, stride: 0.62 });
+      const period = gaitPeriod({ legLength: legLength ?? undefined });
       // 段首相位对齐到左脚触地，避免任意起步造成左右脚相位突变
       const legAt = (timeSec: number, side: 'L' | 'R') => {
         const cyc = (timeSec / period) + (side === 'L' ? 0 : 0.5) - phase;
-        return gaitLeg(cyc);
+        return gaitLeg(cyc, { legLength: legLength ?? undefined });
       };
       const body = (timeSec: number) => gaitCycle((timeSec / period) - phase);
       return {
@@ -607,7 +609,7 @@ export function generatePlannedTracks(
     if (template === 'sit' && sitSolution?.degraded === 'seat-too-high') {
       warnings.push(`座面高于腿长可达范围（超出 ${(sitSolution.solution?.float ?? 0).toFixed(2)}m），坐姿将双脚悬空`);
     }
-    let sched = schedules(template, phase, segmentInteraction, seg.clause, onBareGround, sitSolution);
+    let sched = schedules(template, phase, segmentInteraction, seg.clause, onBareGround, sitSolution, legChain ? legChain.upper + legChain.lower : null);
     if (template === 'wave') {
       const requestedSide = /左手|左臂/.test(seg.clause) ? 'L' : 'R';
       const fallbackSide = requestedSide === 'L' ? 'R' : 'L';
@@ -620,7 +622,14 @@ export function generatePlannedTracks(
       for (const semantic of semantics) sched[semantic] ??= () => [0, 0, 0];
     }
     const span = Math.max(seg.t1 - seg.t0, 1e-6);
-    const n = Math.max(2, Math.floor(span / STEP) + 1);
+    /**
+     * 关键帧步长。走路模板必须**比 0.25s 更细**：
+     * STEP=0.25 与步态周期 ~0.5s 正好 2:1，按网格采样每次落在同一相位，
+     * 髋部起伏会被整段抹平成 0（实测 spread=0，看起来像溜冰）。
+     * 走路取 1/60s（每周期约 30 个采样点），其余模板保持 0.25s 不变。
+     */
+    const step = template === 'march' ? Math.min(STEP, gaitPeriod({ legLength: legChain ? legChain.upper + legChain.lower : undefined }) / 24) : STEP;
+    const n = Math.max(2, Math.floor(span / step) + 1);
     for (const [semantic, fn] of Object.entries(sched) as Array<[HumanoidSemantic, ScheduleFn]>) {
       const boneName = bones[semantic];
       if (!boneName) {
@@ -698,7 +707,7 @@ export function generatePlannedTracks(
         }
         const keys: Keyframe<Vec3Tuple>[] = [];
         for (let i = 0; i < n; i++) {
-          const time = Math.min(seg.t0 + i * STEP, seg.t1);
+          const time = Math.min(seg.t0 + i * step, seg.t1);
           const progress = Math.pow(Math.min(Math.max((time - seg.t0) / span, 0), 1), 1 / Math.min(Math.max(seg.speed ?? 1, 0.5), 2));
           const smooth = progress * progress * (3 - 2 * progress);
           keys.push({ time: round3(time), value: template === 'march'
@@ -729,7 +738,19 @@ export function generatePlannedTracks(
         if (segments.some((s) => s.template === 'march')) warnings.push('走路缺少髋部静息位置，已保留原地步态');
         if (template === 'lie' || template === 'sleep') warnings.push('躺倒缺少髋部静息位置，无法贴近地面');
       } else {
-        const distance = template === 'march' ? Math.max(0.35, Math.min(1.2, span * 0.22)) : 0;
+        /**
+         * 走路位移：由**步幅 × 步频**推出，而不是写死「每秒 0.22m」。
+         * 写死速度会让高个角色步子变短、步频变快（腿摆幅没变但走得更密），
+         * 与 gaitPeriod/strideForLeg 的体型缩放脱节。
+         * 有实测腿长时步幅随体型走（文献 SL≈0.74·L），周期由 gaitPeriod 给出。
+         */
+        const marchLeg = legChain ? legChain.upper + legChain.lower : null;
+        const marchStride = strideForLeg(marchLeg);
+        const marchPeriod = gaitPeriod({ legLength: marchLeg ?? undefined });
+        // 上限只用来兜住异常输入（如 period 极小），正常值远小于它
+        const distance = template === 'march'
+          ? Math.max(marchStride, Math.min(span * 3, (span / marchPeriod) * marchStride))
+          : 0;
         const fromOffset = rootOffset;
         const rootIntensity = Math.min(Math.max(seg.intensity ?? 1, 0.4), 1.6);
         const groundedHipOffset: Vec3Tuple = groundHipLocalOffset ?? [0, groundY + 0.13 - restPosition[1], 0];
@@ -784,7 +805,7 @@ export function generatePlannedTracks(
                   : template === 'stand' ? [0, 0, 0] as Vec3Tuple : rootOffset;
         const keys: Keyframe<Vec3Tuple>[] = [];
         for (let i = 0; i < n; i++) {
-          const time = Math.min(seg.t0 + i * STEP, seg.t1);
+          const time = Math.min(seg.t0 + i * step, seg.t1);
           const progress = (time - seg.t0) / span;
           /**
            * 髋部位移包络必须与**腿的伸展**同步，否则会插地：
@@ -808,12 +829,11 @@ export function generatePlannedTracks(
           // 这是"看起来像假人"的常见原因之一。
           // 减去双支撑相的常量基准，使走路段首尾都归零 —— 这样与后续
           // 「停顿/坐/躺」段（bob=0）天然连续，不会产生段边界跳变。
-          const hipBob = template === 'march'
-            ? gaitCycle((time - seg.t0) / gaitPeriod({ legLength: 0.85, stride: 0.62 }) - phase).hipLift - GAIT_HIP_BASE
-            : 0;
           keys.push({ time: round3(time), value: [
             restPosition[0] + fromOffset[0] + (toOffset[0] - fromOffset[0]) * smooth,
-            restPosition[1] + fromOffset[1] + (toOffset[1] - fromOffset[1]) * smooth + hipBob,
+            restPosition[1] + fromOffset[1] + (toOffset[1] - fromOffset[1]) * smooth + (template === 'march'
+            ? gaitCycle((time - seg.t0) / gaitPeriod({ legLength: legChain ? legChain.upper + legChain.lower : undefined }) - phase).hipLift - GAIT_HIP_BASE
+            : 0),
             restPosition[2] + fromOffset[2] + (toOffset[2] - fromOffset[2]) * smooth + walkedZ + distance * progress,
           ], interp: 'linear' });
         }

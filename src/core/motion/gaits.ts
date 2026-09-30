@@ -104,14 +104,47 @@ export interface GaitOptions {
 }
 
 /**
+ * 真人步幅 / 腿长的无量纲比（单步）。
+ *
+ * 依据 Takahashi et al. 的最优步行实测：SL_opt = 0.781·L、SR_opt = 138.5·L（步/分），
+ * 髋关节角约 46°。KJAB 对 50 名成人（腿长 0.89m）的实测为单步 0.62m、步频 109.8 步/分，
+ * 即比值 0.70。取 0.74 居中。
+ */
+export const STRIDE_PER_LEG = 0.74;
+
+/** 默认腿长：仅在调用方量不到骨架时兜底（对应 1.75m 左右的成年男性）。 */
+export const DEFAULT_LEG_LENGTH = 0.85;
+
+/**
+ * 由**实测腿长**推出单步步幅（米）。
+ * 写死 0.62m 会让高个角色步子明显偏短（实测腿长 1.00m 时比文献短 20%）。
+ */
+export function strideForLeg(legLength?: number | null): number {
+  const L = legLength && legLength > 0.2 ? legLength : DEFAULT_LEG_LENGTH;
+  return L * STRIDE_PER_LEG;
+}
+
+/**
  * 由步幅/腿长推导步态周期（秒/单步）。
- * 真人经验：单步时长 ≈ 0.45–0.55s；步幅越大周期越长但次线性。
+ *
+ * 真人经验：单步时长 ≈ 0.45–0.55s；步幅越大周期越长但**次线性**
+ * （几何相似摆的结论：SR ∝ 1/√L，所以腿越长单步越慢、步频越低）。
+ *
+ * 注意：步幅若取 `strideForLeg()`（与腿长成正比），`stride/legLength` 会被约掉，
+ * 周期变成常量 0.51s —— 那样高个角色会走出「步子大但频率不变」的非真人步态。
+ * 故这里用**腿长本身**做次线性缩放，而不是用比值。
  */
 export function gaitPeriod(opts: GaitOptions = {}): number {
-  const legLength = opts.legLength ?? 0.85;
-  const stride = opts.stride ?? 0.62;
-  const ratio = Math.max(0.35, Math.min(1.6, stride / Math.max(0.2, legLength * 0.7)));
-  return 0.5 * Math.pow(ratio, 0.35);
+  const legLength = opts.legLength ?? DEFAULT_LEG_LENGTH;
+  const L = Math.max(0.2, legLength);
+  // 以 0.85m 为基准，周期随 √(L) 增长（SR ∝ 1/√L）
+  const base = 0.5 * Math.sqrt(L / DEFAULT_LEG_LENGTH);
+  if (opts.stride !== undefined) {
+    // 显式给了步幅：步幅越大周期越长但次线性
+    const ratio = Math.max(0.35, Math.min(1.6, opts.stride / (L * 0.7)));
+    return base * Math.pow(ratio, 0.35);
+  }
+  return Math.max(0.30, Math.min(0.85, base));
 }
 
 export interface GaitSample {
@@ -145,9 +178,9 @@ export function gaitLeg(phase: number, opts: GaitOptions = {}): GaitSample {
   const isSwing = p >= swingStart;
   const u = isSwing ? (p - swingStart) / (1 - swingStart) : p / swingStart;
   // 摆幅与步幅成比例；腿越长需要更大的摆幅才能达到同样步幅
-  const legLength = opts.legLength ?? 0.85;
-  const stride = opts.stride ?? 0.62;
-  const amp = Math.max(0.6, Math.min(1.5, stride / (legLength * 0.62)));
+  const legLength = opts.legLength ?? DEFAULT_LEG_LENGTH;
+  const stride = opts.stride ?? strideForLeg(legLength);
+  const amp = Math.max(0.6, Math.min(1.5, stride / (legLength * STRIDE_PER_LEG)));
 
   let thigh: number;
   let knee: number;
