@@ -31,8 +31,13 @@ backend/.venv/bin/uvicorn main:app --app-dir backend --port 8123
 
 角色来源：左侧 **真人男 Soldier**（在线，Mixamo 骨架）/ **CesiumMan**（内置离线，CC-BY-4.0）一键加载；
 或粘贴 Ready Player Me 自建真人 `.glb` 链接（demo.readyplayer.me 免费捏脸，男女自选）；
-或拖入外部 GLB；离线保底有程序化示例男女（右侧主题可换肤色/服装）。
+或拖入外部 GLB；离线保底有程序化示例男女（右侧主题可换肤色/服装，**人物定制**面板可改体型/面部/发型）。
 公开模型见 `public/samples/README.md`，署名见 `public/samples/ATTRIBUTION.md`。
+
+**真人动作库**（右侧面板）：内置 10 个真人动捕 clip（站立/行走/慢跑/坐/站起/蹲姿/交谈手势等），
+一键重定向到当前角色骨架。资产来源 Quaternius Universal Animation Library（Standard collection），
+许可 **CC0-1.0 公有领域**（可商用、无需署名），声明见 `public/samples/motions/NOTICE-Quaternius-CC0.txt`。
+只重定向骨骼旋转；根部位移仍由髋部管线负责（源模型是 1m 白模，位移不可直接搬运）。
 
 操作：顶部 🤖 AI 命令条直接对话改动作（一键快捷指令）；`空格`=播放/暂停，`Ctrl+Z`=撤销，`Ctrl+Y`=重做。
 右侧 Inspector 为悬浮弹窗（右上 ✕ 关闭，不挤压视口）。生成动作后会显示"X/Y 轨道已绑定"，未绑定的骨骼会点名（换角色后需重新生成）。

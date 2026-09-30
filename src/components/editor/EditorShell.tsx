@@ -21,6 +21,7 @@ import { StagePanel } from '../inspector/StagePanel';
 import { EffectsPanel } from '../inspector/EffectsPanel';
 import { Timeline } from '../timeline/Timeline';
 import { ActionPresets } from '../ai/ActionPresets';
+import { MotionLibraryPanel } from '../ai/MotionLibraryPanel';
 import { MotionPanel } from '../ai/MotionPanel';
 import { InbetweenPanel } from '../ai/InbetweenPanel';
 import { PhysicsPanel } from '../ai/PhysicsPanel';
@@ -302,6 +303,7 @@ export function EditorShell() {
             <div className="min-h-0 flex-1 overflow-auto">
               <div id="inspector-panel-previs" role="tabpanel" aria-label="预演" hidden={inspectorTab !== 'previs'}>
                 <ActionPresets />
+                <MotionLibraryPanel />
                 <ActionPlanPanel />
                 <MotionPanel />
                 <InbetweenPanel />

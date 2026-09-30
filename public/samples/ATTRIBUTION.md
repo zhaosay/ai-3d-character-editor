@@ -18,3 +18,15 @@
 
 - 用户在 demo.readyplayer.me 免费创建真人（男/女自选）后粘贴 `.glb` 链接加载
 - 许可是用户与 RPM 之间的事；本项目不托管、不分发任何 RPM 资产
+
+## 真人动作库（仓库内置，CC0-1.0）
+
+- 来源：Quaternius *Universal Animation Library*, **Standard collection**（经 DirectorDesk 打包格式引入）
+- 许可：**CC0-1.0 公有领域奉献** — 作者放弃全部著作权，**无署名义务、无商用限制**
+  （CC0 无需署名，此处保留出处仅为溯源透明）
+- 上游：https://quaternius.com/packs/universalanimationlibrary.html
+- 许可全文：https://creativecommons.org/publicdomain/zero/1.0/
+- 内容：10 个精选动捕 clip + 白模（站立待机/交谈手势/行走/慢跑/蹲姿待机/蹲着前进/坐下/坐姿待机/坐姿交谈/站起）
+- 存储：`public/samples/motions/humanoid-v1.json`（2.7MB JSON，包裹 base64 GLB）+ 同目录 manifest
+- 原始声明：见 `public/samples/motions/NOTICE-Quaternius-CC0.txt`
+- 使用方式：重定向到当前角色骨架，仅骨骼旋转；根部位移仍由本项目髋部管线负责
