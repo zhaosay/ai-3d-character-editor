@@ -1,6 +1,7 @@
 import { useAnimationStore } from '../../stores/animationStore';
 import { useCharacterStore } from '../../stores/characterStore';
 import { useIKStore } from '../../stores/ikStore';
+import { useSkeletonStore } from '../../stores/skeletonStore';
 import { captureBoneLocal } from '../../core/animation/applyPose';
 import type { IKChainId } from '../../core/ik/types';
 import type { Vec3Tuple } from '../../types/global';
@@ -10,12 +11,14 @@ const ORDER: IKChainId[] = ['arm.L', 'arm.R', 'leg.L', 'leg.R'];
 
 export function IKPanel() {
   const chains = useIKStore((s) => s.chains);
+  const rig = useSkeletonStore((s) => s.rigSuggestion);
   const detected = ORDER.filter((id) => chains[id]);
   return (
     <div className="space-y-2 border-b border-zinc-200 p-3 text-xs">
       <div className="flex items-center gap-2 font-bold text-zinc-700">
         IK <ProviderBadge source="real" label="P3 双骨+Pole" />
       </div>
+      {rig && <RigStatus />}
       {detected.length === 0 && (
         <div className="text-zinc-500">未检测到 IK 链（需要语义映射到手臂/腿骨骼，先加载带骨骼角色）</div>
       )}
@@ -24,6 +27,41 @@ export function IKPanel() {
       ))}
       <div className="text-[11px] text-zinc-500">IK 仅暂停时生效；播放时为 FK 采样。调好姿势后可用“整链打关键帧”存入 Timeline。</div>
     </div>
+  );
+}
+
+/** 骨架自动识别结果：陌生命名时告诉用户哪里没绑上，而不是静默失效。 */
+function RigStatus() {
+  const rig = useSkeletonStore((s) => s.rigSuggestion);
+  if (!rig) return null;
+  if (rig.confidence === 'certain') {
+    return (
+      <div className="rounded bg-emerald-50 px-2 py-1 text-[11px] text-emerald-800 ring-1 ring-emerald-300">
+        骨架自动识别：全部 {Object.keys(rig.map).length} 项已绑定
+      </div>
+    );
+  }
+  return (
+    <details className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-900 ring-1 ring-amber-300">
+      <summary className="cursor-pointer font-bold">
+        骨架自动识别：{rig.confidence === 'none' ? '核心骨骼缺失' : '建议复核'}
+        （已绑 {Object.keys(rig.map).length} 项）
+      </summary>
+      {rig.missingCore.length > 0 && (
+        <div className="mt-1 font-mono">
+          缺核心：{rig.missingCore.join('、')}
+        </div>
+      )}
+      {rig.unmapped.length > 0 && (
+        <div className="mt-1 text-amber-800">
+          未识别 {rig.unmapped.length} 根：{rig.unmapped.slice(0, 8).join('、')}
+          {rig.unmapped.length > 8 && ` 等`}
+        </div>
+      )}
+      <div className="mt-1 text-amber-800">
+        这些骨骼不参与 IK 与动作模板；改名后可自动识别，或换用标准命名角色。
+      </div>
+    </details>
   );
 }
 

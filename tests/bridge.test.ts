@@ -66,10 +66,30 @@ describe('Node 与 Python 工具列表一致', () => {
     expect(frontend.filter((n) => !backend.has(n))).toEqual([]);
   });
 
-  it('MCP server 的解析规则与测试一致（ToolName 联合体内的字面量）', () => {
+  it('MCP server 从生成的 schema JSON 读取工具契约', () => {
     const server = readFileSync(resolve(ROOT, 'mcp/server.mjs'), 'utf8');
-    expect(server).toContain("src.indexOf('export type ToolName =')");
-    // 不能用「整文件所有引号」，那会把 READONLY_TOOLS 也算进来
-    expect(server).not.toMatch(/src\.matchAll\(\/\^\\s\*\\\|/);
+    expect(server).toContain("new URL('./tools.schema.json', import.meta.url)");
+    // 不再从 toolTypes.ts 现场正则解析（易与 isToolName 漂移），改为构建期生成
+    expect(server).not.toContain('export type ToolName =');
+  });
+
+  it('生成的 tools.schema.json 与 toolCatalog 同步', async () => {
+    const { TOOL_DOCS, TOOL_DOC_NAMES, briefSchemas } = await import('../src/services/agent/toolCatalog');
+    const gen = JSON.parse(readFileSync(resolve(ROOT, 'mcp/tools.schema.json'), 'utf8')) as {
+      tools: Array<{ name: string; description: string; requiredArgs: string[] }>;
+    };
+    expect(gen.tools.map((t) => t.name)).toEqual(TOOL_DOC_NAMES);
+    expect(gen.tools).toEqual(briefSchemas());
+    for (const t of gen.tools) {
+      expect(t.description.length, `${t.name} 缺描述`).toBeGreaterThan(0);
+      expect(Array.isArray(t.requiredArgs)).toBe(true);
+      expect(TOOL_DOCS[t.name as keyof typeof TOOL_DOCS], `${t.name} 不在目录中`).toBeTruthy();
+    }
+  });
+
+  it('editor_help 支持按工具名取全文', () => {
+    const server = readFileSync(resolve(ROOT, 'mcp/server.mjs'), 'utf8');
+    expect(server).toContain('DOC_BY_NAME');
+    expect(server).toContain('formatDoc');
   });
 });

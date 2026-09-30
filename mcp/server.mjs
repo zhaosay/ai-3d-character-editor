@@ -29,48 +29,55 @@ const BRIDGE = process.env.EDITOR_BRIDGE ?? 'http://127.0.0.1:5173';
 const TOKEN = process.env.MCP_TOKEN ?? randomBytes(32).toString('hex');
 
 /**
- * 工具契约从前端源码读取，避免两处维护。
- * 只取 `ToolName` 联合类型里、位于前两个花括号之间的字符串字面量 ——
- * 不能用「整文件所有 'xxx'」，那会把 READONLY_TOOLS 等其它常量也算进来。
+ * 工具契约来自 mcp/tools.schema.json（由 scripts/genToolSchemas.mjs 从
+ * src/services/agent/toolCatalog.ts 生成）。MCP 进程是纯 Node、无法 import
+ * 本项目 TS 模块，故在构建期把目录导出为 JSON —— 与 handler 共用同一真相源。
  */
-function loadToolNames() {
-  const url = new URL('../src/services/agent/toolTypes.ts', import.meta.url);
-  const src = readFileSync(url, 'utf8');
-  const start = src.indexOf('export type ToolName =');
-  if (start < 0) throw new Error('未找到 ToolName 联合类型');
-  const end = src.indexOf(';', start);
-  const body = src.slice(start, end);
-  return [...body.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+function loadSchemas() {
+  const url = new URL('./tools.schema.json', import.meta.url);
+  const data = JSON.parse(readFileSync(url, 'utf8'));
+  if (!Array.isArray(data.tools) || data.tools.length === 0) {
+    throw new Error('mcp/tools.schema.json 为空，请先运行 node scripts/genToolSchemas.mjs');
+  }
+  return data;
 }
 
-const TOOL_NAMES = loadToolNames();
+const SCHEMAS = loadSchemas();
+const TOOL_NAMES = SCHEMAS.tools.map((t) => t.name);
 
-const FULL_HELP = `# 编辑器工具全集
-
-所有工具都支持 \`idempotencyKey\`（相同 key 重复调用只生效一次）。
-写操作进历史栈，可撤销。
-
-## 工具
-${TOOL_NAMES.map((n) => `- \`${n}\``).join('\n')}
-
-## 典型流程
-1. \`inspect_skeleton\` — 看清当前角色骨骼与语义映射
-2. \`load_character\` / \`create_animation\` — 准备工程
-3. \`generate_motion\` 或 \`retarget_motion\` — 产生动作
-4. \`check_physics\` — 体检（穿地/脚滑/平衡/关节极限）
-5. \`repair_physics\` — 修复；\`export_animation\` — 导出
-`;
+/** 全文帮助：editor_help 无参时返回全集，带 tool 参数时只返回该工具。 */
+const FULL_HELP = SCHEMAS.helpText;
+const DOC_BY_NAME = new Map(SCHEMAS.docs.map((d) => [d.name, d]));
 
 const TOOLS = [
-  ...TOOL_NAMES.map((name) => ({
-    name,
-    description: `编辑器工具 ${name}。参数与用法见 editor_help。`,
-    inputSchema: { type: 'object', properties: {}, additionalProperties: true },
+  // 首发层：精简 schema —— 一行描述 + 必填参数名。
+  // 全量 inputSchema 会占大量 context，模型需要细节时用 editor_help 按需拉取。
+  ...SCHEMAS.tools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: {
+      type: 'object',
+      properties: Object.fromEntries(
+        t.requiredArgs.map((a) => [a, { type: 'string', description: '必填，详见 editor_help' }]),
+      ),
+      required: t.requiredArgs,
+      additionalProperties: true,
+    },
   })),
   {
     name: 'editor_help',
-    description: '获取全部工具的完整契约（首发 schema 为精简版，需要细节时调用本工具）。',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    description: '获取工具完整契约（类型/取值/示例/错误码）。不传 tool 返回全集；传 tool 只返回该工具。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tool: {
+          type: 'string',
+          description: '只查这一个工具的完整文档；省略则返回全部',
+          enum: TOOL_NAMES,
+        },
+      },
+      additionalProperties: false,
+    },
   },
 ];
 
@@ -119,6 +126,17 @@ async function handleRpc(body) {
       return reply({ tools: TOOLS });
     case 'tools/call':
       if (params?.name === 'editor_help') {
+        const want = params?.arguments?.tool;
+        if (typeof want === 'string' && want.length > 0) {
+          const doc = DOC_BY_NAME.get(want);
+          if (!doc) {
+            return reply({
+              content: [{ type: 'text', text: `未知工具 ${want}。可用：${TOOL_NAMES.join(', ')}` }],
+              isError: true,
+            });
+          }
+          return reply({ content: [{ type: 'text', text: formatDoc(doc) }] });
+        }
         return reply({ content: [{ type: 'text', text: FULL_HELP }] });
       }
       if (!TOOL_NAMES.includes(params?.name)) {
@@ -148,6 +166,24 @@ function authorized(auth) {
   const expected = `Bearer ${TOKEN}`;
   if (auth.length !== expected.length) return false;
   return timingSafeEqual(Buffer.from(auth), Buffer.from(expected));
+}
+
+/** 单个工具的全文文档（editor_help tool=<name>）。 */
+function formatDoc(d) {
+  const lines = [`### \`${d.name}\` — ${d.summary}${d.mutates ? '' : '（只读）'}`];
+  if (d.detail) lines.push('', d.detail);
+  if (d.params.length > 0) {
+    lines.push('', '参数：');
+    for (const p of d.params) {
+      lines.push(`- \`${p.name}\`: ${p.type}${p.required ? '（必填）' : ''} — ${p.desc}`);
+      if (p.values) lines.push(`  取值：${p.values.join(' / ')}`);
+      if (p.example !== undefined) lines.push(`  例：${JSON.stringify(p.example)}`);
+    }
+  } else {
+    lines.push('', '无参数。');
+  }
+  if (d.errors?.length) lines.push('', `错误码：${d.errors.join(' / ')}`);
+  return lines.join('\n');
 }
 
 const server = createServer((req, res) => {

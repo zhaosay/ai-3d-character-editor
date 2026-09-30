@@ -9,6 +9,7 @@ import { useThemeStore } from '../../stores/themeStore';
 import { useAppearanceStore } from '../../stores/appearanceStore';
 import { detectIKChains } from '../../core/ik/chains';
 import { buildSkeletonTree } from '../../core/skeleton/buildSkeletonTree';
+import { suggestHumanoidRig } from '../../core/skeleton/rigDetect';
 import { readTheme } from '../../core/theme/theme';
 import { clampAppearance, type Appearance } from '../../core/character/appearance';
 import type { CharacterMeta } from '../../types/global';
@@ -22,6 +23,12 @@ export function activateCharacter(meta: CharacterMeta, scene: THREE.Group, dispo
   useCharacterStore.getState().setCharacter(meta, scene);
   const snap = buildSkeletonTree(scene);
   useSkeletonStore.getState().setSnapshot(snap.boneCount > 0 ? snap : null);
+  // 骨架自动识别诊断：陌生 GLB 换了命名时，这里告诉用户哪些没绑上、缺哪些核心骨。
+  useSkeletonStore.setState({
+    rigSuggestion: snap.boneCount > 0
+      ? suggestHumanoidRig(Object.values(snap.nodes).map((n) => n.name))
+      : null,
+  });
   useSelectionStore.getState().select(null);
   useHistoryStore.getState().clear();
   useIKStore.getState().initChains(detectIKChains(snap));
@@ -42,6 +49,7 @@ export function deactivateCharacter() {
   prevDispose = null;
   useCharacterStore.getState().clear();
   useSkeletonStore.getState().setSnapshot(null);
+  useSkeletonStore.setState({ rigSuggestion: null });
   useSelectionStore.getState().select(null);
   useIKStore.getState().clear();
   useHistoryStore.getState().clear();

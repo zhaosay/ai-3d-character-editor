@@ -1,4 +1,5 @@
 import { guessSemantic } from '../../core/skeleton/humanoidMap';
+import { CORE_SEMANTICS } from '../../core/skeleton/rigDetect';
 import type { HumanoidSemantic } from '../../core/skeleton/types';
 
 /**
@@ -132,13 +133,8 @@ export interface MotionBindReport {
 }
 
 export function diagnoseMotionBind(sourceMap: Partial<Record<HumanoidSemantic, string>>): MotionBindReport {
-  const required: HumanoidSemantic[] = [
-    'hips', 'spine', 'head',
-    'upperArm.L', 'upperArm.R', 'forearm.L', 'forearm.R',
-    'thigh.L', 'thigh.R', 'shin.L', 'shin.R',
-  ];
-  const missing = required.filter((s) => !sourceMap[s]);
-  return { bound: required.length - missing.length, missing };
+  const missing = CORE_SEMANTICS.filter((s) => !sourceMap[s]);
+  return { bound: CORE_SEMANTICS.length - missing.length, missing };
 }
 
 export const MOTION_ASSET = {

@@ -1,0 +1,838 @@
+{
+  "helpText": "# 编辑器工具全集（全文契约）\n\n所有工具都支持 `idempotencyKey`（相同 key 重复调用只生效一次）。写操作进历史栈，可撤销。\n\n## 工具\n### `load_character` — 加载角色 GLB。\n\n需用户拖入文件，Agent 无法代传文件路径。\n\n无参数。\n\n错误码：NEEDS_USER_FILE\n\n### `inspect_skeleton` — 读骨架：骨名、语义、层级。（只读）\n\n只读。返回每根骨的 name/semantic/parent。用于确认能操作哪些骨骼，不要凭空编造骨名。\n\n无参数。\n\n### `select_bone` — 选中一根骨骼。\n\n按骨名或语义选中，供后续修改与打关键帧。\n\n参数：\n- `bone`: string（必填） — 骨骼名或语义名（如 \"spine\"、\"upperArm.L\"）\n  例：\"upperArm.L\"\n\n错误码：BONE_NOT_FOUND\n\n### `modify_bone` — 改骨骼姿态（绝对或增量）。\n\n五种模式至少给一种：rotationEulerDeg/rotationDeltaDeg 绝对或增量欧拉角(度)，position/positionDelta 绝对或增量位置。绝对值基于 rest 姿态。\n\n参数：\n- `bone`: string（必填） — 骨骼名或语义名（如 \"spine\"、\"upperArm.L\"）\n  例：\"spine\"\n- `rotationEulerDeg`: number[] — 绝对欧拉角 [x,y,z] 度\n  例：\"[0, 8, 0]\"\n- `rotationDeltaDeg`: number[] — 增量欧拉角 [x,y,z] 度\n- `position`: number[] — 绝对位置 [x,y,z]\n- `positionDelta`: number[] — 增量位置 [x,y,z]\n\n错误码：BONE_NOT_FOUND\n\n### `create_keyframe` — 给骨骼在指定时间打关键帧。\n\n默认取当前姿态作为该时刻的旋转关键帧。需已有活动动画（先 create_animation / generate_motion）。\n\n参数：\n- `bone`: string（必填） — 骨骼名或语义名（如 \"spine\"、\"upperArm.L\"）\n  例：\"spine\"\n- `time`: number — 秒，默认当前时间\n  例：1.2\n- `interp`: string — 插值方式\n  取值：linear / step\n  例：\"linear\"\n- `includePosition`: boolean — 是否同时记录位置关键帧\n\n错误码：NO_ANIMATION / BONE_NOT_FOUND\n\n### `delete_keyframe` — 删除某骨骼某时刻的关键帧。\n\n参数：\n- `bone`: string（必填） — 骨骼名或语义名（如 \"spine\"、\"upperArm.L\"）\n- `time`: number（必填） — 秒\n  例：1.2\n\n错误码：KEY_NOT_FOUND\n\n### `create_animation` — 新建动画并设为活动动画。\n\n参数：\n- `name`: string — 动画名\n  例：\"Take 2\"\n\n### `generate_motion` — 用自然语言生成/规划动作片段。\n\n核心动作工具。给一句描述（如\"先下蹲再挥剑\"），返回规划好的时间段与模板轨道。\n\n参数：\n- `prompt`: string（必填） — 动作描述\n  例：\"角色从站立缓慢坐下再站起\"\n- `clarification`: string — 补充约束（≤1000字）\n- `segments`: object[] — 显式分段规划，每段含 t0/t1/模板/强度\n\n错误码：NO_CHARACTER / BAD_ARGS\n\n### `revise_action_segment` — 修改已规划动作的某一段。\n\n在已生成的 segments 上做局部修订：换模板、调强度/速度、改指向道具。\n\n参数：\n- `segmentIndex`: number（必填） — 要改的段序号\n  例：0\n- `template`: string — 换成哪个动作模板（如 march/sit/squat）\n- `intensity`: number — 强度 0..1\n- `speed`: number — 播放速度倍率\n- `targetPropId`: string — 改指向的道具 id\n- `clause`: string — 自然语言修订说明\n\n### `set_scene_prop` — 增删改场景道具。\n\n操作 add/update/remove 三选一。\n\n参数：\n- `operation`: string（必填） — 操作类型\n  取值：add / update / remove\n  例：\"add\"\n- `kind`: string（必填） — 道具类型（如 chair/sword）\n  例：\"chair\"\n- `id`: string — 道具 id（update/remove 必填）\n- `position`: number[] — 摆放位置 世界坐标 [x, y, z]\n  例：\"[0, 0, -0.8]\"\n- `size`: number[] — 尺寸 [w,h,d]\n- `attachTo`: string — 附着骨骼（手持道具）\n- `rotationY`: number — 绕 Y 旋转弧度\n\n### `set_previs_target` — 设定预演目标道具与距离。\n\n影响走位/朝向计算。\n\n参数：\n- `propId`: string — 目标道具 id\n- `distanceMeters`: number — 期望距离（米）\n  例：1.2\n\n### `set_previs_event` — 在预演动作上增改删事件标记。\n\n用于让特效/音效对齐到某个时间点。\n\n参数：\n- `operation`: string（必填） — 操作\n  取值：add / update / remove\n  例：\"add\"\n- `actionIndex`: number（必填） — 动作序号\n- `time`: number（必填） — 时间（秒）\n  例：0.8\n- `label`: string（必填） — 事件标签（如 \"swing\"）\n  例：\"swing\"\n- `eventIndex`: number — 事件序号（update/remove 必填）\n\n### `set_camera_keyframe` — 给镜头打关键帧。\n\n需先生成预演动画。镜头字段可能被锁定（FIELD_LOCKED）。\n\n参数：\n- `operation`: string（必填） — 操作\n  取值：add / update / remove\n  例：\"add\"\n- `time`: number（必填） — 时间（秒）\n  例：0.5\n- `fov`: number — 视场角（度）\n  例：40\n\n错误码：NO_ANIMATION / FIELD_LOCKED\n\n### `set_previs_effect` — 给预演动作挂特效。\n\n操作 add/update/remove。\n\n参数：\n- `operation`: string（必填） — 操作\n  取值：add / update / remove\n  例：\"add\"\n- `actionIndex`: number（必填） — 动作序号\n- `kind`: string（必填） — 特效类型\n- `time`: number（必填） — 时间（秒）\n- `duration`: number（必填） — 持续（秒）\n- `scale`: number — 缩放\n- `color`: string — 颜色\n- `path`: string — 特效贴图/路径\n- `position`: number[] — 位置 世界坐标 [x, y, z]\n- `bladeSweep`: boolean — 是否刀光扫掠\n- `id`: string — 特效 id（update/remove 必填）\n\n### `set_face_keyframe` — 改表情/面部 morph。\n\n操作 upsert/remove。targetName 为 morph 目标名。\n\n参数：\n- `operation`: string（必填） — 操作\n  取值：upsert / remove\n  例：\"upsert\"\n- `targetName`: string（必填） — 面部 morph 目标名\n- `meshPath`: string — 面部 mesh 路径\n- `time`: number（必填） — 时间（秒）\n- `value`: number（必填） — morph 强度 0..1\n  例：0.8\n\n### `retarget_motion` — （已内建于 generate_motion）独立重定向。\n\n保留占位，当前版本返回 RESERVED。\n\n无参数。\n\n错误码：RESERVED\n\n### `apply_ik` — 开关 IK 链或设 IK 目标。\n\n需语义已映射到手臂/腿骨骼。IK 仅暂停时生效。\n\n参数：\n- `chain`: string（必填） — IK 链\n  取值：arm.L / arm.R / leg.L / leg.R\n  例：\"arm.L\"\n- `enable`: boolean — 是否启用（缺省=切换）\n- `target`: number[] — IK 目标 世界坐标 [x, y, z]\n- `polePoint`: number[] — 极向量 世界坐标 [x, y, z]\n\n错误码：CHAIN_MISSING\n\n### `apply_inbetween` — 两关键帧间自动补间。\n\n在当前动画全程按密度与缓动补间。\n\n参数：\n- `density`: number — 补间密度 2..120\n  例：12\n- `ease`: string — 缓动\n  取值：linear / easeIn / easeOut / easeInOut / easeOutIn\n\n错误码：NO_ANIMATION\n\n### `check_physics` — 体检：失衡/穿地/关节超限。（只读）\n\n只读。需已有活动动画与角色骨骼（尤其 hips）。返回问题清单。\n\n无参数。\n\n错误码：NO_ANIMATION / NO_CHARACTER / NO_HIPS\n\n### `repair_joint_limit` — 修复单关节超限。\n\n把某骨某时刻的旋转夹回合法范围。\n\n参数：\n- `boneName`: string — 骨骼名\n- `time`: number — 时间（秒），须在动画范围内\n\n错误码：BAD_ARGS\n\n### `repair_physics` — 修复物理问题（穿地/失衡）。\n\n可按 kind 指定修法。\n\n参数：\n- `kind`: string — 修复类型（如 ground/balance）\n- `foot`: string — 指定脚（foot.L/foot.R）\n- `time`: number — 时间（秒）\n\n### `export_animation` — 导出动画为 GLB。（只读）\n\n不指定 animationId 则导出全部动画。\n\n参数：\n- `animationId`: string — 只导出指定动画\n\n错误码：NO_ANIMATION\n",
+  "tools": [
+    {
+      "name": "load_character",
+      "description": "加载角色 GLB。",
+      "requiredArgs": []
+    },
+    {
+      "name": "inspect_skeleton",
+      "description": "读骨架：骨名、语义、层级。",
+      "requiredArgs": []
+    },
+    {
+      "name": "select_bone",
+      "description": "选中一根骨骼。",
+      "requiredArgs": [
+        "bone"
+      ]
+    },
+    {
+      "name": "modify_bone",
+      "description": "改骨骼姿态（绝对或增量）。",
+      "requiredArgs": [
+        "bone"
+      ]
+    },
+    {
+      "name": "create_keyframe",
+      "description": "给骨骼在指定时间打关键帧。",
+      "requiredArgs": [
+        "bone"
+      ]
+    },
+    {
+      "name": "delete_keyframe",
+      "description": "删除某骨骼某时刻的关键帧。",
+      "requiredArgs": [
+        "bone",
+        "time"
+      ]
+    },
+    {
+      "name": "create_animation",
+      "description": "新建动画并设为活动动画。",
+      "requiredArgs": []
+    },
+    {
+      "name": "generate_motion",
+      "description": "用自然语言生成/规划动作片段。",
+      "requiredArgs": [
+        "prompt"
+      ]
+    },
+    {
+      "name": "revise_action_segment",
+      "description": "修改已规划动作的某一段。",
+      "requiredArgs": [
+        "segmentIndex"
+      ]
+    },
+    {
+      "name": "set_scene_prop",
+      "description": "增删改场景道具。",
+      "requiredArgs": [
+        "operation",
+        "kind"
+      ]
+    },
+    {
+      "name": "set_previs_target",
+      "description": "设定预演目标道具与距离。",
+      "requiredArgs": []
+    },
+    {
+      "name": "set_previs_event",
+      "description": "在预演动作上增改删事件标记。",
+      "requiredArgs": [
+        "operation",
+        "actionIndex",
+        "time",
+        "label"
+      ]
+    },
+    {
+      "name": "set_camera_keyframe",
+      "description": "给镜头打关键帧。",
+      "requiredArgs": [
+        "operation",
+        "time"
+      ]
+    },
+    {
+      "name": "set_previs_effect",
+      "description": "给预演动作挂特效。",
+      "requiredArgs": [
+        "operation",
+        "actionIndex",
+        "kind",
+        "time",
+        "duration"
+      ]
+    },
+    {
+      "name": "set_face_keyframe",
+      "description": "改表情/面部 morph。",
+      "requiredArgs": [
+        "operation",
+        "targetName",
+        "time",
+        "value"
+      ]
+    },
+    {
+      "name": "retarget_motion",
+      "description": "（已内建于 generate_motion）独立重定向。",
+      "requiredArgs": []
+    },
+    {
+      "name": "apply_ik",
+      "description": "开关 IK 链或设 IK 目标。",
+      "requiredArgs": [
+        "chain"
+      ]
+    },
+    {
+      "name": "apply_inbetween",
+      "description": "两关键帧间自动补间。",
+      "requiredArgs": []
+    },
+    {
+      "name": "check_physics",
+      "description": "体检：失衡/穿地/关节超限。",
+      "requiredArgs": []
+    },
+    {
+      "name": "repair_joint_limit",
+      "description": "修复单关节超限。",
+      "requiredArgs": []
+    },
+    {
+      "name": "repair_physics",
+      "description": "修复物理问题（穿地/失衡）。",
+      "requiredArgs": []
+    },
+    {
+      "name": "export_animation",
+      "description": "导出动画为 GLB。",
+      "requiredArgs": []
+    }
+  ],
+  "docs": [
+    {
+      "name": "load_character",
+      "summary": "加载角色 GLB。",
+      "detail": "需用户拖入文件，Agent 无法代传文件路径。",
+      "mutates": true,
+      "params": [],
+      "errors": [
+        "NEEDS_USER_FILE"
+      ]
+    },
+    {
+      "name": "inspect_skeleton",
+      "summary": "读骨架：骨名、语义、层级。",
+      "detail": "只读。返回每根骨的 name/semantic/parent。用于确认能操作哪些骨骼，不要凭空编造骨名。",
+      "mutates": false,
+      "params": []
+    },
+    {
+      "name": "select_bone",
+      "summary": "选中一根骨骼。",
+      "detail": "按骨名或语义选中，供后续修改与打关键帧。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "bone",
+          "type": "string",
+          "required": true,
+          "desc": "骨骼名或语义名（如 \"spine\"、\"upperArm.L\"）",
+          "example": "upperArm.L"
+        }
+      ],
+      "errors": [
+        "BONE_NOT_FOUND"
+      ]
+    },
+    {
+      "name": "modify_bone",
+      "summary": "改骨骼姿态（绝对或增量）。",
+      "detail": "五种模式至少给一种：rotationEulerDeg/rotationDeltaDeg 绝对或增量欧拉角(度)，position/positionDelta 绝对或增量位置。绝对值基于 rest 姿态。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "bone",
+          "type": "string",
+          "required": true,
+          "desc": "骨骼名或语义名（如 \"spine\"、\"upperArm.L\"）",
+          "example": "spine"
+        },
+        {
+          "name": "rotationEulerDeg",
+          "type": "number[]",
+          "required": false,
+          "desc": "绝对欧拉角 [x,y,z] 度",
+          "example": "[0, 8, 0]"
+        },
+        {
+          "name": "rotationDeltaDeg",
+          "type": "number[]",
+          "required": false,
+          "desc": "增量欧拉角 [x,y,z] 度"
+        },
+        {
+          "name": "position",
+          "type": "number[]",
+          "required": false,
+          "desc": "绝对位置 [x,y,z]"
+        },
+        {
+          "name": "positionDelta",
+          "type": "number[]",
+          "required": false,
+          "desc": "增量位置 [x,y,z]"
+        }
+      ],
+      "errors": [
+        "BONE_NOT_FOUND"
+      ]
+    },
+    {
+      "name": "create_keyframe",
+      "summary": "给骨骼在指定时间打关键帧。",
+      "detail": "默认取当前姿态作为该时刻的旋转关键帧。需已有活动动画（先 create_animation / generate_motion）。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "bone",
+          "type": "string",
+          "required": true,
+          "desc": "骨骼名或语义名（如 \"spine\"、\"upperArm.L\"）",
+          "example": "spine"
+        },
+        {
+          "name": "time",
+          "type": "number",
+          "required": false,
+          "desc": "秒，默认当前时间",
+          "example": 1.2
+        },
+        {
+          "name": "interp",
+          "type": "string",
+          "required": false,
+          "desc": "插值方式",
+          "values": [
+            "linear",
+            "step"
+          ],
+          "example": "linear"
+        },
+        {
+          "name": "includePosition",
+          "type": "boolean",
+          "required": false,
+          "desc": "是否同时记录位置关键帧"
+        }
+      ],
+      "errors": [
+        "NO_ANIMATION",
+        "BONE_NOT_FOUND"
+      ]
+    },
+    {
+      "name": "delete_keyframe",
+      "summary": "删除某骨骼某时刻的关键帧。",
+      "detail": "",
+      "mutates": true,
+      "params": [
+        {
+          "name": "bone",
+          "type": "string",
+          "required": true,
+          "desc": "骨骼名或语义名（如 \"spine\"、\"upperArm.L\"）"
+        },
+        {
+          "name": "time",
+          "type": "number",
+          "required": true,
+          "desc": "秒",
+          "example": 1.2
+        }
+      ],
+      "errors": [
+        "KEY_NOT_FOUND"
+      ]
+    },
+    {
+      "name": "create_animation",
+      "summary": "新建动画并设为活动动画。",
+      "detail": "",
+      "mutates": true,
+      "params": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "desc": "动画名",
+          "example": "Take 2"
+        }
+      ]
+    },
+    {
+      "name": "generate_motion",
+      "summary": "用自然语言生成/规划动作片段。",
+      "detail": "核心动作工具。给一句描述（如\"先下蹲再挥剑\"），返回规划好的时间段与模板轨道。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "prompt",
+          "type": "string",
+          "required": true,
+          "desc": "动作描述",
+          "example": "角色从站立缓慢坐下再站起"
+        },
+        {
+          "name": "clarification",
+          "type": "string",
+          "required": false,
+          "desc": "补充约束（≤1000字）"
+        },
+        {
+          "name": "segments",
+          "type": "object[]",
+          "required": false,
+          "desc": "显式分段规划，每段含 t0/t1/模板/强度"
+        }
+      ],
+      "errors": [
+        "NO_CHARACTER",
+        "BAD_ARGS"
+      ]
+    },
+    {
+      "name": "revise_action_segment",
+      "summary": "修改已规划动作的某一段。",
+      "detail": "在已生成的 segments 上做局部修订：换模板、调强度/速度、改指向道具。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "segmentIndex",
+          "type": "number",
+          "required": true,
+          "desc": "要改的段序号",
+          "example": 0
+        },
+        {
+          "name": "template",
+          "type": "string",
+          "required": false,
+          "desc": "换成哪个动作模板（如 march/sit/squat）"
+        },
+        {
+          "name": "intensity",
+          "type": "number",
+          "required": false,
+          "desc": "强度 0..1"
+        },
+        {
+          "name": "speed",
+          "type": "number",
+          "required": false,
+          "desc": "播放速度倍率"
+        },
+        {
+          "name": "targetPropId",
+          "type": "string",
+          "required": false,
+          "desc": "改指向的道具 id"
+        },
+        {
+          "name": "clause",
+          "type": "string",
+          "required": false,
+          "desc": "自然语言修订说明"
+        }
+      ]
+    },
+    {
+      "name": "set_scene_prop",
+      "summary": "增删改场景道具。",
+      "detail": "操作 add/update/remove 三选一。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "operation",
+          "type": "string",
+          "required": true,
+          "desc": "操作类型",
+          "values": [
+            "add",
+            "update",
+            "remove"
+          ],
+          "example": "add"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "required": true,
+          "desc": "道具类型（如 chair/sword）",
+          "example": "chair"
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "required": false,
+          "desc": "道具 id（update/remove 必填）"
+        },
+        {
+          "name": "position",
+          "type": "number[]",
+          "required": false,
+          "desc": "摆放位置 世界坐标 [x, y, z]",
+          "example": "[0, 0, -0.8]"
+        },
+        {
+          "name": "size",
+          "type": "number[]",
+          "required": false,
+          "desc": "尺寸 [w,h,d]"
+        },
+        {
+          "name": "attachTo",
+          "type": "string",
+          "required": false,
+          "desc": "附着骨骼（手持道具）"
+        },
+        {
+          "name": "rotationY",
+          "type": "number",
+          "required": false,
+          "desc": "绕 Y 旋转弧度"
+        }
+      ]
+    },
+    {
+      "name": "set_previs_target",
+      "summary": "设定预演目标道具与距离。",
+      "detail": "影响走位/朝向计算。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "propId",
+          "type": "string",
+          "required": false,
+          "desc": "目标道具 id"
+        },
+        {
+          "name": "distanceMeters",
+          "type": "number",
+          "required": false,
+          "desc": "期望距离（米）",
+          "example": 1.2
+        }
+      ]
+    },
+    {
+      "name": "set_previs_event",
+      "summary": "在预演动作上增改删事件标记。",
+      "detail": "用于让特效/音效对齐到某个时间点。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "operation",
+          "type": "string",
+          "required": true,
+          "desc": "操作",
+          "values": [
+            "add",
+            "update",
+            "remove"
+          ],
+          "example": "add"
+        },
+        {
+          "name": "actionIndex",
+          "type": "number",
+          "required": true,
+          "desc": "动作序号"
+        },
+        {
+          "name": "time",
+          "type": "number",
+          "required": true,
+          "desc": "时间（秒）",
+          "example": 0.8
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "desc": "事件标签（如 \"swing\"）",
+          "example": "swing"
+        },
+        {
+          "name": "eventIndex",
+          "type": "number",
+          "required": false,
+          "desc": "事件序号（update/remove 必填）"
+        }
+      ]
+    },
+    {
+      "name": "set_camera_keyframe",
+      "summary": "给镜头打关键帧。",
+      "detail": "需先生成预演动画。镜头字段可能被锁定（FIELD_LOCKED）。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "operation",
+          "type": "string",
+          "required": true,
+          "desc": "操作",
+          "values": [
+            "add",
+            "update",
+            "remove"
+          ],
+          "example": "add"
+        },
+        {
+          "name": "time",
+          "type": "number",
+          "required": true,
+          "desc": "时间（秒）",
+          "example": 0.5
+        },
+        {
+          "name": "fov",
+          "type": "number",
+          "required": false,
+          "desc": "视场角（度）",
+          "example": 40
+        }
+      ],
+      "errors": [
+        "NO_ANIMATION",
+        "FIELD_LOCKED"
+      ]
+    },
+    {
+      "name": "set_previs_effect",
+      "summary": "给预演动作挂特效。",
+      "detail": "操作 add/update/remove。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "operation",
+          "type": "string",
+          "required": true,
+          "desc": "操作",
+          "values": [
+            "add",
+            "update",
+            "remove"
+          ],
+          "example": "add"
+        },
+        {
+          "name": "actionIndex",
+          "type": "number",
+          "required": true,
+          "desc": "动作序号"
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "required": true,
+          "desc": "特效类型"
+        },
+        {
+          "name": "time",
+          "type": "number",
+          "required": true,
+          "desc": "时间（秒）"
+        },
+        {
+          "name": "duration",
+          "type": "number",
+          "required": true,
+          "desc": "持续（秒）"
+        },
+        {
+          "name": "scale",
+          "type": "number",
+          "required": false,
+          "desc": "缩放"
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "required": false,
+          "desc": "颜色"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": false,
+          "desc": "特效贴图/路径"
+        },
+        {
+          "name": "position",
+          "type": "number[]",
+          "required": false,
+          "desc": "位置 世界坐标 [x, y, z]"
+        },
+        {
+          "name": "bladeSweep",
+          "type": "boolean",
+          "required": false,
+          "desc": "是否刀光扫掠"
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "required": false,
+          "desc": "特效 id（update/remove 必填）"
+        }
+      ]
+    },
+    {
+      "name": "set_face_keyframe",
+      "summary": "改表情/面部 morph。",
+      "detail": "操作 upsert/remove。targetName 为 morph 目标名。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "operation",
+          "type": "string",
+          "required": true,
+          "desc": "操作",
+          "values": [
+            "upsert",
+            "remove"
+          ],
+          "example": "upsert"
+        },
+        {
+          "name": "targetName",
+          "type": "string",
+          "required": true,
+          "desc": "面部 morph 目标名"
+        },
+        {
+          "name": "meshPath",
+          "type": "string",
+          "required": false,
+          "desc": "面部 mesh 路径"
+        },
+        {
+          "name": "time",
+          "type": "number",
+          "required": true,
+          "desc": "时间（秒）"
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "required": true,
+          "desc": "morph 强度 0..1",
+          "example": 0.8
+        }
+      ]
+    },
+    {
+      "name": "retarget_motion",
+      "summary": "（已内建于 generate_motion）独立重定向。",
+      "detail": "保留占位，当前版本返回 RESERVED。",
+      "mutates": true,
+      "params": [],
+      "errors": [
+        "RESERVED"
+      ]
+    },
+    {
+      "name": "apply_ik",
+      "summary": "开关 IK 链或设 IK 目标。",
+      "detail": "需语义已映射到手臂/腿骨骼。IK 仅暂停时生效。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "chain",
+          "type": "string",
+          "required": true,
+          "desc": "IK 链",
+          "values": [
+            "arm.L",
+            "arm.R",
+            "leg.L",
+            "leg.R"
+          ],
+          "example": "arm.L"
+        },
+        {
+          "name": "enable",
+          "type": "boolean",
+          "required": false,
+          "desc": "是否启用（缺省=切换）"
+        },
+        {
+          "name": "target",
+          "type": "number[]",
+          "required": false,
+          "desc": "IK 目标 世界坐标 [x, y, z]"
+        },
+        {
+          "name": "polePoint",
+          "type": "number[]",
+          "required": false,
+          "desc": "极向量 世界坐标 [x, y, z]"
+        }
+      ],
+      "errors": [
+        "CHAIN_MISSING"
+      ]
+    },
+    {
+      "name": "apply_inbetween",
+      "summary": "两关键帧间自动补间。",
+      "detail": "在当前动画全程按密度与缓动补间。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "density",
+          "type": "number",
+          "required": false,
+          "desc": "补间密度 2..120",
+          "example": 12
+        },
+        {
+          "name": "ease",
+          "type": "string",
+          "required": false,
+          "desc": "缓动",
+          "values": [
+            "linear",
+            "easeIn",
+            "easeOut",
+            "easeInOut",
+            "easeOutIn"
+          ]
+        }
+      ],
+      "errors": [
+        "NO_ANIMATION"
+      ]
+    },
+    {
+      "name": "check_physics",
+      "summary": "体检：失衡/穿地/关节超限。",
+      "detail": "只读。需已有活动动画与角色骨骼（尤其 hips）。返回问题清单。",
+      "mutates": false,
+      "params": [],
+      "errors": [
+        "NO_ANIMATION",
+        "NO_CHARACTER",
+        "NO_HIPS"
+      ]
+    },
+    {
+      "name": "repair_joint_limit",
+      "summary": "修复单关节超限。",
+      "detail": "把某骨某时刻的旋转夹回合法范围。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "boneName",
+          "type": "string",
+          "required": false,
+          "desc": "骨骼名"
+        },
+        {
+          "name": "time",
+          "type": "number",
+          "required": false,
+          "desc": "时间（秒），须在动画范围内"
+        }
+      ],
+      "errors": [
+        "BAD_ARGS"
+      ]
+    },
+    {
+      "name": "repair_physics",
+      "summary": "修复物理问题（穿地/失衡）。",
+      "detail": "可按 kind 指定修法。",
+      "mutates": true,
+      "params": [
+        {
+          "name": "kind",
+          "type": "string",
+          "required": false,
+          "desc": "修复类型（如 ground/balance）"
+        },
+        {
+          "name": "foot",
+          "type": "string",
+          "required": false,
+          "desc": "指定脚（foot.L/foot.R）"
+        },
+        {
+          "name": "time",
+          "type": "number",
+          "required": false,
+          "desc": "时间（秒）"
+        }
+      ]
+    },
+    {
+      "name": "export_animation",
+      "summary": "导出动画为 GLB。",
+      "detail": "不指定 animationId 则导出全部动画。",
+      "mutates": false,
+      "params": [
+        {
+          "name": "animationId",
+          "type": "string",
+          "required": false,
+          "desc": "只导出指定动画"
+        }
+      ],
+      "errors": [
+        "NO_ANIMATION"
+      ]
+    }
+  ]
+}

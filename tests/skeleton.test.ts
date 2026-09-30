@@ -75,9 +75,11 @@ describe('humanoidMap', () => {
     expect(guessSemantic('leg_joint_R_2')).toBe('shin.R');
     expect(guessSemantic('leg_joint_L_3')).toBe('foot.L');
     expect(guessSemantic('leg_joint_R_3')).toBe('foot.R');
-    expect(guessSemantic('leg_joint_R_5')).toBeNull(); // 脚趾： intentionally unmapped
+    // 脚趾骨：归入 foot（同一语义，映射只取第一条）
+    expect(guessSemantic('leg_joint_R_5')).toBe('foot.R');
     expect(guessSemantic('Skeleton_arm_joint_R')).toBe('upperArm.R');
     expect(guessSemantic('Skeleton_arm_joint_L__4_')).toBe('upperArm.L');
+    // 右臂序号与左臂相反（实测 CesiumMan.glb 层级：R → R__2_ 前臂 → R__3_ 手）
     expect(guessSemantic('Skeleton_arm_joint_R__2_')).toBe('forearm.R');
     expect(guessSemantic('Skeleton_arm_joint_L__3_')).toBe('forearm.L');
     expect(guessSemantic('Skeleton_arm_joint_R__3_')).toBe('hand.R');

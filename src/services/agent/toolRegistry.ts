@@ -1544,6 +1544,9 @@ export async function executeActions(actions: AgentAction[]): Promise<ToolResult
   return out;
 }
 
+/** 工具数量（供 toolCatalog 交叉校验，防目录与 handler 漂移）。 */
+export const HANDLERS_COUNT = Object.keys(HANDLERS).length;
+
 export function clearIdempotencyCache() {
   seen.clear();
 }

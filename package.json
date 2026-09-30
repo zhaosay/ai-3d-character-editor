@@ -12,7 +12,9 @@
     "serve": "./scripts/serve.sh start",
     "serve:stop": "./scripts/serve.sh stop",
     "serve:restart": "./scripts/serve.sh restart",
-    "serve:status": "./scripts/serve.sh status"
+    "serve:status": "./scripts/serve.sh status",
+    "gen:tools": "node scripts/genToolSchemas.mjs",
+    "prebuild": "node scripts/genToolSchemas.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",

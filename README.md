@@ -119,6 +119,29 @@ MCP_TOKEN=<64位hex> node mcp/server.mjs
 安全边界：只监听回环地址、Host 头校验（防 DNS rebinding）、Bearer token 常量时间比较、
 工具名白名单、请求体上限。编辑器未打开时工具调用会**立即**返回明确错误而非挂起。
 
+### 工具契约与双层披露
+
+工具参数在 `src/services/agent/toolCatalog.ts` 里**声明式定义**（参数类型/必填/取值/示例/错误码），
+构建期由 `scripts/genToolSchemas.mjs` 导出为 `mcp/tools.schema.json`，MCP 与 `editor_help` 共用这一份真相源。
+
+为省模型 context，采用双层披露：
+
+- **首发层**（`tools/list` 下发）：每个工具一行描述 + 必填参数名。
+- **全文层**（`editor_help` 按需拉取）：完整参数类型、取值范围、示例与错误码。
+  `editor_help` 不带参数返回全集（22 个工具约 5KB），带 `{"tool":"apply_ik"}` 只返回单个工具。
+
+`tests/toolCatalog.test.ts` 会读取 `toolRegistry.ts` 源码，交叉校验目录里声明的每个参数
+确实被对应 handler 读取、每个必填参数确实被强制校验 —— 防止文档与实现漂移。
+
+### 骨架自动识别
+
+骨骼语义（hips / upperArm.L / foot.R …）由 `src/core/skeleton/rigDetect.ts` 从骨名自动推断，
+覆盖 Mixamo、VRoid、Rigify、Character Creator 4、Unity/Unreal、Quaternius、CesiumMan 共 7 类常见命名
+（分层归一化 → 解析左右 → 判定部位）。识别不确定时返回空而不是猜，避免左右镜像。
+
+加载角色后，IK 面板顶部会显示识别诊断：绑定了多少项、缺哪些核心语义、哪些骨未识别
+（置信度分为 certain / heuristic / none）。换陌生 GLB 时不再静默失效。
+
 ## 动作真实度
 
 步态与发力曲线按真人运动规律生成（预备/跟随、近端先动、呼吸耦合、真实步态相位），实现见 `src/core/motion/gaits.ts`。
