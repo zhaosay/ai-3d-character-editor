@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+import bridge
+
 from main import app
 from media_integrations import build_previs_image_workflow, decode_previs_reference
 
@@ -381,3 +383,47 @@ if __name__ == "__main__":
     test_generate_with_rest_offsets()
     test_llm_unreachable_falls_back_with_warning()
     print("backend tests: 20 passed")
+
+
+# --- Agent 桥接中转（MCP ↔ 浏览器）---
+
+
+def test_bridge_health_reports_tool_count():
+    r = client.get("/bridge/health")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True and body["bridge"] is True
+    assert body["tools"] == len(bridge.TOOL_NAMES)
+    assert body["tools"] >= 20
+
+
+def test_bridge_rejects_unknown_tool():
+    r = client.post("/bridge/execute", json={"tool": "rm_rf", "args": {}})
+    assert r.status_code == 400
+    assert "未知工具" in r.json()["detail"]
+
+
+def test_bridge_rejects_non_object_args():
+    r = client.post("/bridge/execute", json={"tool": "inspect_skeleton", "args": [1, 2]})
+    assert r.status_code == 400
+    assert "args" in r.json()["detail"]
+
+
+def test_bridge_reports_editor_offline_instead_of_hanging():
+    """编辑器未连接时必须立刻报错，不能挂起让 MCP 超时。"""
+    r = client.post("/bridge/execute", json={"tool": "inspect_skeleton", "args": {}})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False
+    assert "未连接" in body["error"]
+
+
+def test_bridge_pending_is_empty_without_clients():
+    r = client.get("/bridge/pending")
+    assert r.status_code == 200
+    assert r.json()["requests"] == []
+
+
+def test_bridge_rejects_unknown_result_id():
+    r = client.post("/bridge/result/does-not-exist", json={"ok": True})
+    assert r.status_code == 404

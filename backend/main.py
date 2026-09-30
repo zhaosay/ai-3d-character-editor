@@ -22,6 +22,8 @@ from fastapi.responses import Response
 
 from motion_mock import generate_tracks_planned, plan_prompt
 from llm import llm_configured, try_llm_plan
+from bridge import router as bridge_router
+
 from media_integrations import (
     COMFY_URL, build_previs_image_workflow, comfy_readiness, vpipe_request,
     vpipe_video_stream, validate_vpipe_style,
@@ -39,6 +41,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Agent 桥接中转（MCP ↔ 浏览器）。放在 CORS 之后以便阅读。
+app.include_router(bridge_router)
 
 
 class Keyframe(BaseModel):

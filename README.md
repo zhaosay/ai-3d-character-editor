@@ -86,6 +86,39 @@ Agent 还能在确认后单独改动作段、增删改场景道具/镜头关键�
 
 支持多子句连招（“拔剑，然后格挡，最后踢腿”→ 三段合成）。
 
+## Agent 桥接 / MCP（外部 Agent 操作本编辑器）
+
+除内置导演助手外，支持 Codex / Claude Code 等外部 Agent 通过 **MCP** 直接操作当前工程。
+
+```
+MCP server(Node) ──HTTP──▶ FastAPI 桥接中转 ◀──WebSocket/轮询── 浏览器(持有场景并执行)
+```
+
+场景状态在浏览器里，所以 Node 侧只做协议转换，工具最终由页面执行（复用 Agent 唯一入口 `executeAction`，
+不新增旁路）。
+
+```bash
+# 1) 起后端（桥接中转在 /bridge/*）
+backend/.venv/bin/uvicorn main:app --app-dir backend --port 8123
+
+# 2) 起前端（自动连接桥接）
+npm run serve
+
+# 3) 起 MCP server（打印 token 与客户端配置）
+MCP_TOKEN=<64位hex> node mcp/server.mjs
+```
+
+把 server 启动日志里的配置加进客户端（Claude Code / Codex 等）：
+
+```json
+{ "mcpServers": { "ai-3d-character-editor": {
+  "type": "http", "url": "http://127.0.0.1:7331/mcp",
+  "headers": { "Authorization": "Bearer <你的 token>" } } } }
+```
+
+安全边界：只监听回环地址、Host 头校验（防 DNS rebinding）、Bearer token 常量时间比较、
+工具名白名单、请求体上限。编辑器未打开时工具调用会**立即**返回明确错误而非挂起。
+
 ## 动作真实度
 
 步态与发力曲线按真人运动规律生成（预备/跟随、近端先动、呼吸耦合、真实步态相位），实现见 `src/core/motion/gaits.ts`。
