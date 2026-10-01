@@ -116,8 +116,14 @@ describe('procedural', () => {
     const rest = { 'upperArm.R': restQ } as never;
     const { tracks } = generateProceduralTracks(bones, { prompt: '挥手', duration: 2 }, rest);
     const ur = tracks.find((t) => t.boneName === 'UR')!;
-    // 首键 = rest ⊗ t0 偏移（seed 默认 0 → phase 0 → z 偏移 -55°）
-    const expected = composeRestOffset(restQ, [0, 0, -55]);
+    /**
+     * 首键必须是**静息姿态**：挥手从站立姿势起手。
+     * 旧实现写成 `55 − 20·sin(...)`（常量偏置 + 振荡），手臂永远停在
+     * 35~75°，第 0 帧就偏离静息 55°。现在抬臂用包络 lift(0)=0。
+     */
+    const expected = composeRestOffset(restQ, [0, 0, 0]);
+    expect(ur.rotation[0].value[0]).toBeCloseTo(expected[0], 5);
+    expect(ur.rotation[0].value[3]).toBeCloseTo(expected[3], 5);
     expect(ur.rotation[0].value[0]).toBeCloseTo(expected[0], 5);
     expect(ur.rotation[0].value[3]).toBeCloseTo(expected[3], 5);
     // 与旧绝对值（-150°）明显不同：证明相对化生效（15°旋转差 ≈ 四元数距离 0.13）
@@ -170,20 +176,38 @@ describe('procedural', () => {
     }
   });
 
+  it('挥手从静息起手、首尾回到静息（不再永远举着手臂）', () => {
+    const bones = { 'upperArm.R': 'UpperArm_R', 'forearm.R': 'Forearm_R' } as never;
+    const { tracks } = generateProceduralTracks(bones, { prompt: '挥手', duration: 2 });
+    const arm = tracks.find((t) => t.boneName === 'UpperArm_R')!.rotation;
+    const dev = (k: { value: number[] }) => Math.hypot(k.value[0], k.value[1], k.value[2]);
+    // 首帧与末帧都应接近静息（arm 被放下）
+    expect(dev(arm[0]), '挥手起始应从静息姿势起手').toBeLessThan(1e-6);
+    expect(dev(arm[arm.length - 1]), '挥手结束应回到静息').toBeLessThan(1e-6);
+    // 中间确实抬起来了
+    expect(Math.max(...arm.map(dev)), '挥手中途应抬起手臂').toBeGreaterThan(0.4);
+  });
+
   it('按子句指定的左手生成挥手轨道', () => {
     const bones = {
       'upperArm.R': 'UpperArm_R', 'forearm.R': 'Forearm_R',
       'upperArm.L': 'UpperArm_L', 'forearm.L': 'Forearm_L',
     } as never;
     const { template, tracks } = generateProceduralTracks(bones, { prompt: '左手挥手', duration: 2 });
-    const rotationDistanceFromRest = (boneName: string) => {
-      const value = tracks.find((track) => track.boneName === boneName)?.rotation[0].value;
-      return value ? Math.hypot(value[0], value[1], value[2]) : 0;
+    /**
+     * 取**最大**幅度而非首帧：挥手现在从静息起手（lift(0)=0），
+     * 首帧本来就是零偏；要看的是手臂确实抬起来挥动。
+     */
+    const maxRotationFromRest = (boneName: string) => {
+      const keys = tracks.find((track) => track.boneName === boneName)?.rotation ?? [];
+      return keys.reduce((m, k) => Math.max(m, Math.hypot(k.value[0], k.value[1], k.value[2])), 0);
     };
     expect(template).toBe('wave');
-    expect(rotationDistanceFromRest('UpperArm_L')).toBeGreaterThan(0.2);
-    expect(rotationDistanceFromRest('Forearm_L')).toBeGreaterThan(0.1);
-    expect(rotationDistanceFromRest('UpperArm_R')).toBeLessThan(1e-6);
+    expect(maxRotationFromRest('UpperArm_L')).toBeGreaterThan(0.2);
+    expect(maxRotationFromRest('Forearm_L')).toBeGreaterThan(0.1);
+    // 右臂不应该跟着动（挥手只动一侧）
+    expect(maxRotationFromRest('UpperArm_R')).toBeLessThan(0.01);
+    expect(maxRotationFromRest('UpperArm_R')).toBeLessThan(1e-6);
   });
 
   it('缺右臂镜像到左臂并警告', () => {

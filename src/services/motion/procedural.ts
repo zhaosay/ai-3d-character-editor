@@ -149,11 +149,26 @@ function schedules(
       const side = /左手|左臂/.test(clause) ? 'L' : 'R';
       const other = side === 'L' ? 'R' : 'L';
       const sign = side === 'R' ? -1 : 1;
+      /**
+       * 抬起与摆动要**分开**：先前写成 `55 − 20·sin(...)` —— 那是
+       * 「常量偏置 + 振荡」，手臂永远停在 35~75°，从不回到静息，
+       * 实测第 0 帧就偏离静息 55°（挥手应该从站立姿势起手）。
+       * 现在抬臂用包络 lift(t)（0→1→0），摆动只是乘在抬臂量上的小幅振荡。
+       */
+      const lift = (t: number) => {
+        // 前 25% 抬起，最后 25% 放下，中间保持
+        const x = Math.max(0, Math.min(1, t));
+        if (x < 0.25) { const u = x / 0.25; return u * u * (3 - 2 * u); }
+        if (x > 0.75) { const u = (1 - x) / 0.25; return u * u * (3 - 2 * u); }
+        return 1;
+      };
+      const raise = 62;
+      const swing = 16;
       return {
-        [`upperArm.${side}`]: (t: number) => [0, 0, sign * (55 - 20 * Math.sin(TAU * (t + phase)))],
-        [`forearm.${side}`]: (t: number) => [0, 0, sign * (20 - 22 * Math.sin(TAU * (2 * t + phase)))],
+        [`upperArm.${side}`]: (t: number) => [0, 0, sign * raise * lift(t) * (1 - swing / raise * Math.sin(TAU * (t + phase)))],
+        [`forearm.${side}`]: (t: number) => [0, 0, sign * 22 * lift(t) * Math.sin(TAU * (2 * t + phase))],
         [`upperArm.${other}`]: () => [0, 0, 0],
-        'head': (t) => [0, 8 * Math.sin(TAU * (t + phase)), 0],
+        'head': (t) => [0, 8 * lift(t) * Math.sin(TAU * (t + phase)), 0],
       };
     }
     case 'handoff': {
@@ -513,7 +528,7 @@ function motionModifiers(prompt: string): { intensity?: number; speed?: number }
 
 const TIME_EPS = 1e-4;
 
-const KNOWN_TEMPLATES = ['wave', 'bow', 'march', 'reach', 'look', 'look_left', 'look_right', 'raise_left', 'raise_right', 'turn', 'orient', 'sit', 'squat', 'kneel', 'lie', 'sleep', 'stand', 'sword', 'handoff', 'block', 'kick', 'punch', 'breath', 'sway'];
+export const KNOWN_TEMPLATES = ['wave', 'bow', 'march', 'reach', 'look', 'look_left', 'look_right', 'raise_left', 'raise_right', 'turn', 'orient', 'sit', 'squat', 'kneel', 'lie', 'sleep', 'stand', 'sword', 'handoff', 'block', 'kick', 'punch', 'breath', 'sway'];
 
 export function isKnownTemplate(t: string): boolean {
   return KNOWN_TEMPLATES.includes(t);
