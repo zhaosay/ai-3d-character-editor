@@ -510,3 +510,46 @@ Unity 的 bool 触发器只能表达「变为 true」，但**停步天然是「i
 `crossfade.test.ts`（14）纯函数边界、`stateMachine.test.ts`（17）状态机语义、
 `crossfadeIntegration.test.ts`（9）经 store 的真实生命周期
 （开始 → 推进 → 中间姿态确实是混合 → 结束自动丢弃来源）。
+
+## 十七、PBR 材质面板（新增）
+
+### 之前的空白
+
+项目里**没有任何材质面板，也没有任何贴图加载**：
+- `loadGltf.finishLoaded` 只统计材质数量（`materials++`），**从不触碰 material 属性**
+  —— 导入 GLB 后用户改不了金属度/粗糙度/贴图
+- 内置角色只有 `Appearance.skinRoughness` 一个标量（0.25~0.85）
+- 全仓库搜 `TextureLoader|createImageBitmap|material.map|normalMap` 零命中；
+  `createObjectURL` 全是下载链接，`FileReader` 只用于 AI 分镜 PNG
+
+### 顺带修掉一个真 bug
+
+`collectThemedMaterials` 只收 `isMeshStandardMaterial`，而 **MeshPhysicalMaterial 继承
+MeshStandardMaterial 但标志不继承**。内置示例角色的皮肤恰好是 `MeshPhysicalMaterial`
+（带 sheen 模拟皮脂），于是**换肤色对示例角色完全无效**。已改成两个标志一起判。
+
+### 材质枚举按「路径」而非 uuid
+
+uuid 是运行时随机值，**存取项目后就变了**。改用「root→mesh 子索引路径 + #材质序号」，
+与 `core/face/morphs.ts` 的 `listMorphTargets` 同一套约定，覆盖才能存进 project.json 并正确恢复。
+
+### 覆盖要能还原
+
+只存 diff 是不够的：清空覆盖后必须把材质**还原成 GLB 自带值**，
+否则画面停在被改状态而面板显示「未修改」（滑块与实际不一致）。
+故 store 额外记 `originals`（首次编辑前的原生值）。
+
+### 数据贴图不能按 sRGB 解读
+
+法线/粗糙度/金属度是**数据**不是颜色，标成 sRGB 会让画面失真。
+`DATA_TEXTURE_SLOTS` 显式区分，导入时按线性解读。
+
+### 贴图释放
+
+`loadGltf.dispose()` 此前只 dispose 几何体，材质与贴图一直占显存。已补上
+（五类贴图 + 材质本身，按 uuid 去重）。
+
+### 测试
+
+`pbr.test.ts`（19）枚举/反查/钳制/多材质/Physical 识别、
+`pbrStore.test.ts`（9）施加生命周期/合并/还原/路径失效容错。

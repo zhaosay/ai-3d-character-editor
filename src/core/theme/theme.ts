@@ -8,6 +8,17 @@ export function isThemable(scene: THREE.Object3D): boolean {
   return (scene.userData['themable'] as boolean | undefined) === true;
 }
 
+/**
+ * MeshPhysicalMaterial 继承 MeshStandardMaterial，但 `isMeshStandardMaterial`
+ * 标志**不继承** —— 只判这个标志会漏掉 MeshPhysicalMaterial。
+ * 而内置示例角色的皮肤恰恰是 MeshPhysicalMaterial（带 sheen 模拟皮脂），
+ * 于是换肤色对示例角色完全无效。这两个标志一起判才覆盖全。
+ */
+function isStandardLike(m: THREE.Material): m is THREE.MeshStandardMaterial {
+  const t = m as unknown as Record<string, boolean>;
+  return t['isMeshStandardMaterial'] === true || t['isMeshPhysicalMaterial'] === true;
+}
+
 function isHex(v: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(v);
 }
@@ -24,7 +35,7 @@ export function collectThemedMaterials(scene: THREE.Object3D): Record<ThemeGroup
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const m of mats) {
       const std = m as THREE.MeshStandardMaterial;
-      if (std && std.isMeshStandardMaterial) {
+      if (std && isStandardLike(std)) {
         (group === 'skin' ? skin : cloth).set(std.uuid, std);
       }
     }

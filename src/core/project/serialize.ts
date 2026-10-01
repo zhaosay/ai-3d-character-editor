@@ -44,6 +44,16 @@ export function parseProjectFile(json: string): ParsedProject {
       fps: r.settings?.fps === 60 ? 60 : 30,
       loop: r.settings?.loop ?? true,
     },
+    // 材质覆盖：只接受「路径 → 对象」的结构，其他一律丢弃（不因脏数据崩）
+    materialOverrides: (() => {
+      const m = (r as Record<string, unknown>)['materialOverrides'];
+      if (!m || typeof m !== 'object' || Array.isArray(m)) return undefined;
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(m as Record<string, unknown>)) {
+        if (typeof k === 'string' && k.includes('#') && v && typeof v === 'object' && !Array.isArray(v)) out[k] = v;
+      }
+      return Object.keys(out).length > 0 ? out : undefined;
+    })(),
   };
   if (r.version !== '1.0') warnings.push(`未知版本号 ${String(r.version)}，已按 1.0 读取`);
 
