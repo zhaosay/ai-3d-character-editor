@@ -8,6 +8,29 @@ import { usePrevisStore } from './previsStore';
 import { useWorldStore } from './worldStore';
 import { useCameraStore } from './cameraStore';
 import { useEffectsStore } from './effectsStore';
+import { blendPoses, fadeWeight } from '../core/animation/crossfade';
+import { sampleAnimation, type SampledPose } from '../core/animation/sampler';
+import { useSkeletonStore } from './skeletonStore';
+
+/**
+ * 静息兜底表（混合时缺失通道用它）。
+ *
+ * 必须有：retarget 出来的轨道常常只有 rotation（position/scale 为空数组），
+ * 若缺失侧不回退静息，淡化过程中这些通道会沿用上一帧的旧值，
+ * 表现为「某些骨突然弹一下」。
+ */
+let _restCache: { key: string; map: Map<string, { position?: Vec3Tuple; quaternion?: QuatTuple; scale?: Vec3Tuple }> } | null = null;
+function restOf() {
+  const nodes = useSkeletonStore.getState().snapshot?.nodes ?? {};
+  const ids = Object.keys(nodes).join('|');
+  if (_restCache && _restCache.key === ids) return _restCache.map;
+  const map = new Map<string, { position?: Vec3Tuple; quaternion?: QuatTuple; scale?: Vec3Tuple }>();
+  for (const n of Object.values(nodes)) {
+    map.set(n.name, { position: [...n.restLocal.position] as Vec3Tuple, quaternion: [...n.restLocal.quaternion] as QuatTuple, scale: [...n.restLocal.scale] as Vec3Tuple });
+  }
+  _restCache = { key: ids, map };
+  return map;
+}
 
 interface AnimationState {
   animations: AnimationData[];
@@ -16,12 +39,37 @@ interface AnimationState {
   playing: boolean;
   loop: boolean;
 
+  /**
+   * 交叉淡化状态（对应 Unity 的「过渡时间」）。
+   * 之前切换动画是硬切，走路→停步时角色瞬间弹回站立姿势。
+   * `fadeFromId` 非 null 时，`fadeFromTime` 指向来源动画的播放头，
+   * `fadeElapsed / fadeDuration` 决定混合权重。
+   */
+  fadeFromId: string | null;
+  fadeFromTime: number;
+  fadeElapsed: number;
+  fadeDuration: number;
+  /** 全局默认过渡时长（秒）；0 = 硬切。UI 可调 */
+  transitionDuration: number;
+
   active: () => AnimationData | null;
+  /** 按淡化权重混合两个动画的采样姿态；无淡化时直接返回当前动画姿态 */
+  blendedPoseAt: (time: number) => SampledPose | null;
+  /** 取淡化权重（0 = 全来源，1 = 全当前）；未淡化返回 null */
+  fadeWeight: () => number | null;
   createAnimation: (name?: string) => string;
   selectAnimation: (id: string) => void;
+  /** 带交叉淡化地切换动画（duration 秒；0 = 立即硬切） */
+  transitionTo: (id: string, duration?: number) => void;
+  /** 推进淡化计时（由播放循环调用） */
+  tickFade: (delta: number) => void;
+  /** 取消正在进行的淡化（回到纯当前动画） */
+  cancelFade: () => void;
   setTime: (t: number) => void;
   setPlaying: (p: boolean) => void;
   toggleLoop: () => void;
+  /** 设置全局交叉淡化时长（秒），0 = 硬切 */
+  setTransitionDuration: (d: number) => void;
   setDuration: (d: number) => void;
   checkpoint: () => void;
   replaceActiveTracks: (tracks: AnimationData['tracks']) => void;
@@ -88,6 +136,11 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
   currentTime: 0,
   playing: false,
   loop: true,
+  fadeFromId: null,
+  fadeFromTime: 0,
+  fadeElapsed: 0,
+  fadeDuration: 0,
+  transitionDuration: 0.2,
 
   active: () => {
     const { animations, activeId } = get();
@@ -109,7 +162,65 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
     if (!animation) return;
     const camera = usePrevisStore.getState().byAnimationId[id]?.scenePlan?.camera;
     useCameraStore.getState().activateAnimation(id, camera, animation.duration);
-    set({ activeId: id, currentTime: 0, playing: false });
+    set({
+      activeId: id, currentTime: 0, playing: false,
+      fadeFromId: null, fadeElapsed: 0, fadeDuration: 0, fadeFromTime: 0,
+    });
+  },
+
+  transitionTo: (id, duration) => {
+    const st = get();
+    const animation = st.animations.find((candidate) => candidate.id === id);
+    if (!animation || animation.id === st.activeId) return;
+    const d = Math.max(0, duration ?? st.transitionDuration);
+    const camera = usePrevisStore.getState().byAnimationId[id]?.scenePlan?.camera;
+    useCameraStore.getState().activateAnimation(id, camera, animation.duration);
+    if (d <= 0 || !st.activeId || !st.playing) {
+      // 无淡化（或未在播放）→ 等价硬切
+      set({
+        activeId: id, currentTime: 0,
+        fadeFromId: null, fadeElapsed: 0, fadeDuration: 0, fadeFromTime: 0,
+      });
+      return;
+    }
+    set({
+      activeId: id, currentTime: 0,
+      fadeFromId: st.activeId, fadeFromTime: st.currentTime,
+      fadeElapsed: 0, fadeDuration: d,
+    });
+  },
+
+  tickFade: (delta) => {
+    const st = get();
+    if (!st.fadeFromId) return;
+    const next = st.fadeElapsed + delta;
+    if (next >= st.fadeDuration) {
+      // 淡化结束：来源丢弃
+      set({ fadeFromId: null, fadeElapsed: 0, fadeDuration: 0, fadeFromTime: 0 });
+    } else {
+      set({ fadeElapsed: next, fadeFromTime: st.fadeFromTime + delta });
+    }
+  },
+
+  cancelFade: () => set({ fadeFromId: null, fadeElapsed: 0, fadeDuration: 0, fadeFromTime: 0 }),
+
+  fadeWeight: () => {
+    const { fadeFromId, fadeElapsed, fadeDuration } = get();
+    if (!fadeFromId) return null;
+    return fadeWeight(fadeElapsed, fadeDuration);
+  },
+
+  blendedPoseAt: (time) => {
+    const st = get();
+    const active = st.active();
+    if (!active) return null;
+    const to = sampleAnimation(active, time);
+    if (!st.fadeFromId) return to;
+    const fromAnim = st.animations.find((a) => a.id === st.fadeFromId);
+    if (!fromAnim) return to;
+    const from = sampleAnimation(fromAnim, st.fadeFromTime);
+    const w = fadeWeight(st.fadeElapsed, st.fadeDuration);
+    return blendPoses(from, to, w, restOf());
   },
 
   setTime: (t) => {
@@ -122,6 +233,8 @@ export const useAnimationStore = create<AnimationState>((set, get) => ({
   setPlaying: (playing) => set({ playing }),
 
   toggleLoop: () => set((s) => ({ loop: !s.loop })),
+
+  setTransitionDuration: (d: number) => set({ transitionDuration: Math.max(0, Math.min(2, d)) }),
 
   setDuration: (d) => {
     if (!Number.isFinite(d) || d < 0.5 || d > 120) return;

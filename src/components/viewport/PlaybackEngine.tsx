@@ -54,8 +54,12 @@ export function PlaybackEngine() {
       }
     }
     st.setTime(t);
+    // 推进交叉淡化计时（来源动画的播放头也在走）
+    st.tickFade(Math.min(delta, 0.1));
     try {
-      const pose = sampleAnimation(active, t);
+      // 有淡化时取混合姿态（来源 → 当前），否则就是普通采样
+      const pose = st.blendedPoseAt(t);
+      if (!pose) { st.setPlaying(false); return; }
       applySampledPose(sceneObject, pose);
       applyFaceTracks(sceneObject, active.faceTracks ?? [], t);
       if (footLockEnabled) {
@@ -104,7 +108,8 @@ export function ScrubApplier() {
         }
         useFootLockStore.getState().setSlip(0);
       } else {
-        const pose = sampleAnimation(active, currentTime);
+        // 与帧循环一致：淡化期间也要取混合姿态，否则拖动时间轴会跳回硬切结果
+        const pose = useAnimationStore.getState().blendedPoseAt(currentTime) ?? sampleAnimation(active, currentTime);
         if (pose.size > 0) {
           // 启用的 IK 链跟随求解，避免 FK 覆盖造成闪一帧
           applyPoseWithIK(sceneObject, pose, pins);

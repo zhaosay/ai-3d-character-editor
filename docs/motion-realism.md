@@ -448,3 +448,65 @@ t(s)   0.0  0.3  0.5  0.8  1.0  1.3  1.5  1.8  2.0  2.3  2.5  2.8  3.0
 | 修复后 | **0°** | 76° | **0°** |
 
 实测曲线：`0→20→38→48→53→62→71→76→61→29→0`（度）。
+
+## 十六、动画交叉淡化与状态机骨架
+
+### 之前的问题
+
+切换动画只有一条路径：`selectAnimation(id)` → `currentTime = 0, playing = false`，
+即**硬切**。走路 → 停步时角色瞬间弹回站立姿势，看起来像滑块而不是人。
+
+全仓库搜索 `crossfade|blend|transition|state machine` 只找到道具挂载的
+`position.lerp / quaternion.slerp`（stage prop，非动画），**动画之间零混合**。
+`THREE.AnimationMixer` 只在 `motionRetarget.ts` 用作一次性离线烘焙器，
+从不调用 `fadeIn/fadeOut/crossFadeFrom/weight`。
+
+### 核心：blendPoses
+
+`src/core/animation/crossfade.ts`。
+
+**关键陷阱：骨骼集合不匹配。** `sampleAnimation` 只为轨道里出现的骨骼产出条目，
+某通道无关键帧时整个通道被省略（retarget 产物就是 rotation-only）。
+若直接「先应用 A 再应用 B」，只属于 A 的骨骼会**沿用 A 的旧值**，
+表现为淡化过程中某些骨突然弹一下。
+
+因此混合必须取**骨骼名并集**，缺失通道用**静息**兜底
+（`SkeletonSnapshot.nodes[].restLocal`，经 store 的 `restOf()` 提供并按节点集缓存）。
+
+- 旋转：slerp（球面插值，不是分量线性）
+- 位置/缩放：lerp
+- 面部 morph：线性，缺失侧视为 0；**0 值必须写入**才能覆盖上一个动画的表情
+- 权重曲线：smoothstep（`fadeWeight`），避免线性过渡的机械感
+
+### 状态机骨架
+
+`src/core/animation/stateMachine.ts`，采用 Unity Animation Controller 的模型：
+
+| 概念 | 我们的实现 |
+|---|---|
+| Entry | `def.entry` |
+| Any State（强制打断） | `from: ANY_STATE`，受击/死亡可打断任何动作 |
+| 触发器 | `trigger` 参数名 + `triggerValue` 极性 |
+| 退出时间 | `exitTime`（归一化 0..1，不依赖 clip 绝对时长） |
+| 过渡时间 | `duration` = 交叉淡化时长 |
+
+**比 Unity 多的一处**：加了 `triggerValue`（默认 true）。
+Unity 的 bool 触发器只能表达「变为 true」，但**停步天然是「isMoving 变 false」**，
+没有反向极性就无法表达「走路 → 站立」。
+
+打断**不等退出时间**（正在挥拳时挨打，不该等拳挥完）。
+淡化中再次被切换时**保留当前淡化进度**而不是重置。
+
+### 落地
+
+- store：`fadeFromId / fadeFromTime / fadeElapsed / fadeDuration / transitionDuration`，
+  新增 `transitionTo()` / `tickFade()` / `cancelFade()` / `blendedPoseAt()` / `fadeWeight()`
+- 播放循环 `PlaybackEngine`：帧循环与 ScrubApplier **两处都要用 `blendedPoseAt()`**，
+  否则拖时间轴会跳回硬切结果
+- 时间轴 UI：下拉切换即交叉淡化，旁边「过渡」输入框调时长（0 = 硬切）
+
+### 测试
+
+`crossfade.test.ts`（14）纯函数边界、`stateMachine.test.ts`（17）状态机语义、
+`crossfadeIntegration.test.ts`（9）经 store 的真实生命周期
+（开始 → 推进 → 中间姿态确实是混合 → 结束自动丢弃来源）。

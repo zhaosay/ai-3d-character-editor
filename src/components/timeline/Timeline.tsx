@@ -81,7 +81,9 @@ function TransportControls() {
   const setDuration = useAnimationStore((s) => s.setDuration);
   const animations = useAnimationStore((s) => s.animations);
   const activeId = useAnimationStore((s) => s.activeId);
-  const selectAnimation = useAnimationStore((s) => s.selectAnimation);
+  const transitionTo = useAnimationStore((s) => s.transitionTo);
+  const transitionDuration = useAnimationStore((s) => s.transitionDuration);
+  const setTransitionDuration = useAnimationStore((s) => s.setTransitionDuration);
   const createAnimation = useAnimationStore((s) => s.createAnimation);
   const renameAnimation = useAnimationStore((s) => s.renameAnimation);
   const deleteAnimation = useAnimationStore((s) => s.deleteAnimation);
@@ -137,13 +139,33 @@ function TransportControls() {
         />
         s
       </label>
-      <select value={activeId ?? ''} onChange={(e) => selectAnimation(e.target.value)} className="rounded bg-zinc-100 px-1 py-1 text-xs outline-none ring-1 ring-zinc-300">
+      {/**
+       * 下拉切换 = **交叉淡化**（对应 Unity 的「过渡时间」）。
+       * 之前是硬切，走路→停步时角色瞬间弹回站立姿势。
+       * 时长由下方「过渡」输入框控制，设为 0 即退回硬切。
+       */}
+      <select
+        value={activeId ?? ''}
+        onChange={(e) => transitionTo(e.target.value)}
+        title="切换动画并交叉淡化（时长见右侧过渡设置）"
+        className="rounded bg-zinc-100 px-1 py-1 text-xs outline-none ring-1 ring-zinc-300"
+      >
         {animations.map((a) => (
           <option key={a.id} value={a.id}>
             {a.name}
           </option>
         ))}
       </select>
+      <label className="flex items-center gap-1 text-[11px] text-zinc-600" title="切换动画时的交叉淡化时长（秒）。0 = 硬切">
+        过渡
+        <input
+          type="number" min={0} max={2} step={0.05}
+          value={transitionDuration}
+          onChange={(e) => setTransitionDuration(Number(e.target.value) || 0)}
+          className="w-14 rounded bg-zinc-100 px-1 py-0.5 font-mono text-xs outline-none ring-1 ring-zinc-300"
+        />
+        s
+      </label>
       <input
         value={nameDraft}
         onChange={(e) => setNameDraft(e.target.value)}
