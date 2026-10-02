@@ -256,7 +256,15 @@ describe('world action planning', () => {
       const q = pose.get(bone)!.quaternion!;
       return Math.hypot(q[0], q[1], q[2], q[3] - 1);
     };
-    expect(identityDistance('ArmL')).toBeGreaterThan(identityDistance('ArmR') * 2);
+    // 交接后的主手（左臂）必须主导挥击。
+    //
+    // 注意阈值：原先断言 `×2`，那编码的是「副手近乎不动」的单手剑假设 ——
+    // 恰恰是「拿剑姿势不对」的成因。双手握剑时副手同样在柄上、必然参与动作，
+    // 实测领先幅度约 1.19×。这里改为断言「主攻臂领先」且「双手都真的动了」。
+    expect(identityDistance('ArmL')).toBeGreaterThan(identityDistance('ArmR'));
+    // 副手不再是 ±12° 的装饰：两条前臂都要有明显运动量
+    expect(identityDistance('ForeL')).toBeGreaterThan(0.1);
+    expect(identityDistance('ForeR')).toBeGreaterThan(0.1);
   });
 
   it('does not invent a bed interaction when lying down is negated', () => {

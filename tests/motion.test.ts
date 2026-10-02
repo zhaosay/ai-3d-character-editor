@@ -220,6 +220,10 @@ describe('procedural', () => {
   it('武侠模板生成有效轨道（归一化+峰值包络）', () => {
     const bones = {
       'spine': 'S',
+      // 持剑模板现在会用到躯干与下肢（双手握剑需要站姿与重心），
+      // 故这里给全 sword 实际引用的骨骼，否则会出现「缺少 …已跳过」告警。
+      'chest': 'C',
+      'hips': 'HP',
       'upperArm.R': 'UR',
       'forearm.R': 'FR',
       'upperArm.L': 'UL',
@@ -228,6 +232,9 @@ describe('procedural', () => {
       'thigh.R': 'TR',
       'thigh.L': 'TL',
       'shin.R': 'SR',
+      'shin.L': 'SL',
+      'foot.R': 'FR2',
+      'foot.L': 'FL2',
     } as never;
     for (const [prompt, template, probe] of [
       ['拔剑', 'sword', 'UR'],

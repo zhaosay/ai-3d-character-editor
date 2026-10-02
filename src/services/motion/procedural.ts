@@ -9,6 +9,7 @@ import { supineContactOffset } from '../../core/ik/restContact';
 import {
   anticipationEnvelope, breathSignal, gaitCycle, gaitLeg, gaitPeriod, proximalDelay, strideForLeg,
 } from '../../core/motion/gaits';
+import { DEFAULT_SWORD_STANCE, scaleStanceToLeg } from '../../core/weapon/grip';
 
 export type BoneMap = Partial<Record<HumanoidSemantic, string>>;
 /** 静息四元数（语义→快照 restLocal），模板偏移量以此为基准合成，适配任意绑定姿势。 */
@@ -386,7 +387,7 @@ function schedules(
         'shin.R': () => [0, 0, 0],
         'chest': (t) => [1.2 * Math.sin(Math.PI * 2 * t), 0, 0],
       };
-    // 武侠单发包络：预备(反向蓄力)→发力(近端先动)→跟随(轻微过冲)，段内回到起点，可循环拼接
+// 武侠单发包络：预备(反向蓄力)→发力(近端先动)→跟随(轻微过冲)，段内回到起点，可循环拼接
     case 'sword': {
       // 发力类用非对称包络：蓄力 14%、快速出剑、收势带过冲
       const env = (t: number) => anticipationEnvelope(t, { windup: 0.14, settle: 0.22, windupAmount: 0.2, overshoot: 0.1 });
@@ -394,13 +395,38 @@ function schedules(
       const main = leftHanded ? 'upperArm.L' : 'upperArm.R';
       const mainFore = leftHanded ? 'forearm.L' : 'forearm.R';
       const off = leftHanded ? 'upperArm.R' : 'upperArm.L';
+      const offFore = leftHanded ? 'forearm.R' : 'forearm.L';
+
+      // 双脚前后开立：前脚（持剑侧）承重约六成，膝微屈，髋下沉。
+      // 开立量与髋下沉按腿长缩放 —— 写死米数会让 1.6m 与 1.9m 的角色
+      // 一个劈叉、一个没站稳（与 gaits.ts 腿长缩放同一原则）。
+      const st = scaleStanceToLeg(DEFAULT_SWORD_STANCE, legLength ?? 0.86);
+      const yaw = leftHanded ? -1 : 1;
+      // 前脚朝前迈、后脚略开立；大腿前后摆由开立量折算（约 1:1.15）
+      const front = st.frontFootZ * 1.15;
+      const back = Math.abs(st.backFootZ) * 1.15;
+
       return {
-        'spine': (t) => [6 * env(t), (leftHanded ? -28 : 28) * env(t), 0],
-        [main]: (t: number) => [-115 * env(t), 0, (leftHanded ? 35 : -35) * env(t)],
+        'spine': (t) => [6 * env(t), yaw * 28 * env(t), 0],
+        // 躯干侧向前脚（重心在一侧，不对称）
+        'chest': (t) => [0, yaw * st.torsoYaw * 0.5 * env(t), 0],
+        [main]: (t: number) => [-115 * env(t), 0, yaw * 35 * env(t)],
         // 前臂延迟启动（近端先动：肩→肘）
         [mainFore]: (t: number) => [-25 * env(proximalDelay(t, 0.08)), 0, 0],
-        [off]: (t: number) => [0, 0, (leftHanded ? -12 : 12) * env(t)],
-        'head': (t: number) => [0, (leftHanded ? 12 : -12) * env(t), 0],
+        // 副手不再只是摆 ±12°：摆到柄尾方向（真实双手握剑的配合）。
+        // 最终落点由 gripSolve 的 IK 精确对齐，这里只给合理的初值与预备动作。
+        [off]: (t: number) => [-95 * env(t), 0, -yaw * 30 * env(t)],
+        [offFore]: (t: number) => [-55 * env(proximalDelay(t, 0.1)), 0, 0],
+        'head': (t) => [0, yaw * 12 * env(t), 0],
+
+        // —— 下肢：前后开立站姿（原来完全没有腿，是「姿势不对」的一半原因）——
+        'hips': (t: number) => [st.hipDrop * 10 * env(t), yaw * 8 * env(t), 0],
+        'thigh.L': () => [front > 0 ? -front * 26 : 0, 0, 6],
+        'thigh.R': () => [back > 0 ? back * 26 : 0, 0, -6],
+        'shin.L': () => [-st.kneeBend, 0, 0],
+        'shin.R': () => [-st.kneeBend * 0.8, 0, 0],
+        'foot.L': () => [st.kneeBend * 0.4, 0, 0],
+        'foot.R': () => [st.kneeBend * 0.3, 0, 0],
       };
     }
     case 'block': {

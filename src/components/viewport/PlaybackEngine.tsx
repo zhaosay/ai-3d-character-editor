@@ -2,21 +2,13 @@ import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useAnimationStore } from '../../stores/animationStore';
 import { useCharacterStore } from '../../stores/characterStore';
-import { useIKStore } from '../../stores/ikStore';
 import { sampleAnimation } from '../../core/animation/sampler';
 import { applySampledPose } from '../../core/animation/applyPose';
 import { applyPoseWithIK, type IKPin } from '../../core/ik/applyPoseWithIK';
 import { applyFaceTracks } from '../../core/face/morphs';
+import { activeChains, solveHeldSwordGrip } from '../../core/weapon/applyHeldGrip';
 import { useFootLockStore } from '../../stores/footLockStore';
 import { FootLockRuntime } from '../../services/motion/footLockRuntime';
-import type { IKChainDef } from '../../core/ik/types';
-
-/** 已检测到的腿 IK 链（过滤掉缺失/未初始化项）。 */
-function legChains(): IKChainDef[] {
-  return Object.values(useIKStore.getState().chains)
-    .map((c) => c?.def)
-    .filter((d): d is IKChainDef => Boolean(d));
-}
 
 /** Canvas 内：播放时推进时间并应用 pose。时间写入 store，Timeline/Inspector 跟随。 */
 export function PlaybackEngine() {
@@ -61,9 +53,10 @@ export function PlaybackEngine() {
       const pose = st.blendedPoseAt(t);
       if (!pose) { st.setPlaying(false); return; }
       applySampledPose(sceneObject, pose);
+      solveHeldSwordGrip(sceneObject);
       applyFaceTracks(sceneObject, active.faceTracks ?? [], t);
       if (footLockEnabled) {
-        if (!runtime.current) runtime.current = new FootLockRuntime(legChains(), footLockConfig);
+        if (!runtime.current) runtime.current = new FootLockRuntime(activeChains(), footLockConfig);
         // solve() 内部会检测时间回退并重置状态
         setSlip(runtime.current.solve(sceneObject, t, delta));
       }
@@ -97,13 +90,15 @@ export function ScrubApplier() {
       if (footLockOn) {
         // 足部锁定是「时间累积」状态：必须从 0 重放到目标时间，
         // 否则拖到任意位置得到的落点都与播放时不一致（scrub 会看到跳变）。
-        const runtime = new FootLockRuntime(legChains(), useFootLockStore.getState().config);
+        const runtime = new FootLockRuntime(activeChains(), useFootLockStore.getState().config);
         const dt = 1 / 30;
         const steps = Math.max(1, Math.ceil(currentTime / dt));
         for (let i = 1; i <= steps; i++) {
           const t = Math.min(currentTime, i * dt);
           const pose = sampleAnimation(active, t);
           applyPoseWithIK(sceneObject, pose, pins);
+    // 持剑握持也要在 scrub 时解算，否则暂停看到的是「副手没握剑」的旧姿势
+    solveHeldSwordGrip(sceneObject);
           runtime.solve(sceneObject, t, dt);
         }
         useFootLockStore.getState().setSlip(0);
@@ -113,6 +108,8 @@ export function ScrubApplier() {
         if (pose.size > 0) {
           // 启用的 IK 链跟随求解，避免 FK 覆盖造成闪一帧
           applyPoseWithIK(sceneObject, pose, pins);
+    // 持剑握持也要在 scrub 时解算，否则暂停看到的是「副手没握剑」的旧姿势
+    solveHeldSwordGrip(sceneObject);
         }
       }
       applyFaceTracks(sceneObject, active.faceTracks ?? [], currentTime);
