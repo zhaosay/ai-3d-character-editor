@@ -37,32 +37,55 @@ export function StoryboardPanel() {
   const text = storyboardText(shots);
   useEffect(() => {
     let live = true;
-    const refresh = () => {
-      void Promise.all([
-        fetch(`${mediaApi}/integrations/comfy/status`).then(async (response) => {
-          const value = await response.json() as Record<string, unknown>;
-          if (!response.ok) throw new Error(String(value['detail'] ?? 'ComfyUI 状态检查失败'));
-          return value;
-        }),
-        fetch(`${mediaApi}/integrations/vpipe/status`).then(async (response) => {
-          const value = await response.json() as Record<string, unknown>;
-          if (!response.ok) throw new Error(String(value['detail'] ?? 'V-Pipe 状态检查失败'));
-          return value;
-        }),
-      ]).then(([comfy, vpipe]) => {
-        if (!live) return;
+    let delay = 15000;
+    let timer = 0;
+
+    /** @returns 后端是否可达 —— 决定下一轮轮询的间隔 */
+    const refresh = async (): Promise<boolean> => {
+      let reachable = true;
+      try {
+        const [comfy, vpipe] = await Promise.all([
+          fetch(`${mediaApi}/integrations/comfy/status`).then(async (response) => {
+            const value = await response.json() as Record<string, unknown>;
+            if (!response.ok) throw new Error(String(value['detail'] ?? 'ComfyUI 状态检查失败'));
+            return value;
+          }),
+          fetch(`${mediaApi}/integrations/vpipe/status`).then(async (response) => {
+            const value = await response.json() as Record<string, unknown>;
+            if (!response.ok) throw new Error(String(value['detail'] ?? 'V-Pipe 状态检查失败'));
+            return value;
+          }),
+        ]);
+        if (!live) return reachable;
         setComfyAvailable(Boolean(comfy['connected'] && comfy['available']));
         setComfyReason(String(comfy['reason'] ?? ''));
         setVpipeReady(Boolean(vpipe['connected']));
-      }).catch(() => {
-        if (!live) return;
+      } catch {
+        reachable = false;
+        if (!live) return reachable;
         setComfyAvailable(false);
         setVpipeReady(false);
-      });
+      }
+      return reachable;
     };
-    refresh();
-    const timer = window.setInterval(refresh, 15000);
-    return () => { live = false; window.clearInterval(timer); };
+
+    // 后端不在时必须降频：15s 硬打一次会在无后端环境持续产生跨域失败
+    //（浏览器层面的 CORS 错误，catch 拦不住），控制台被刷屏。
+    // 实测修正前：t=5s 4 条 → t=65s 20 条，线性增长。
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        void refresh().then((reachable) => {
+          delay = reachable ? 15000 : 60000;
+          schedule();
+        });
+      }, delay);
+    };
+
+    void refresh().then((reachable) => {
+      delay = reachable ? 15000 : 60000;
+      schedule();
+    });
+    return () => { live = false; window.clearTimeout(timer); };
   }, [mediaApi]);
   const polishWithAI = async () => {
     if (!active || provider === 'mock') {

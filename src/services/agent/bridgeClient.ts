@@ -127,7 +127,10 @@ export function startBridgeClient(baseUrl = ''): BridgeClient {
   };
 
   const probe = async () => {
-    if (stopped || enabled) return;
+    // 未配置令牌 = 用户没打算连后端，**一个请求都不该发**。
+    // 缺了这个守卫会在无后端环境下每 3 秒产生一次跨域失败（浏览器层面记 CORS 错误，
+    // catch 拦不住），控制台被刷屏、且是无意义的空转。
+    if (stopped || enabled || !token) return;
     try {
       const res = await fetch(`${httpBase}/health`);
       if (!res.ok) return;
@@ -180,14 +183,15 @@ export function startBridgeClient(baseUrl = ''): BridgeClient {
     }
   };
 
-  void probe();
-  const healthTimer = setInterval(() => { void probe(); }, 3000);
+  // 无令牌时连计时器都不建：既不探测，也不空转
+  const healthTimer = token ? setInterval(() => { void probe(); }, 3000) : undefined;
+  if (token) void probe();
   const pollTimer = setInterval(() => { void poll(); }, POLL_INTERVAL_MS);
   return {
     get connected() { return enabled; },
     stop: () => {
       stopped = true;
-      clearInterval(healthTimer);
+      if (healthTimer !== undefined) clearInterval(healthTimer);
       clearInterval(pollTimer);
       socket?.close();
     },

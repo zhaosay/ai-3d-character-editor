@@ -45,6 +45,19 @@ button {
   padding: 0 10px 8px;
 }
 
+/**
+ * 侧栏宽度：左右共用同一个变量，保证**严格等宽**。
+ *
+ * 之前左栏 clamp(13rem,18vw,17rem) = 259px、右栏 clamp(18rem,25vw,22rem) = 352px，
+ * 差 93px，导致 3D 角色偏离屏幕中线约 129px（视口中心 849px vs 屏幕中心 720px）。
+ * 单点定义即从根上消除这类漂移。
+ *
+ * 宽度参照 posers 的 `grid-template-columns: 280px 1fr 280px`（对称三栏）。
+ */
+:root {
+  --editor-rail-w: clamp(15rem, 19vw, 19rem);
+}
+
 .editor-inspector-tabs button {
   min-height: 34px;
   border: 1px solid transparent;

@@ -252,7 +252,7 @@ export function EditorShell() {
       {/* Main */}
       <div className="editor-main-layout relative flex min-h-0 flex-1 overflow-hidden">
         {/* Left */}
-        <aside ref={sidebarRef} id="character-tools" className={`editor-sidebar ${sidebarOpen ? 'is-open' : ''} flex w-[clamp(13rem,18vw,17rem)] shrink-0 flex-col overflow-y-auto border-r border-zinc-200/80 bg-white`}>
+        <aside ref={sidebarRef} id="character-tools" className={`editor-sidebar ${sidebarOpen ? 'is-open' : ''} flex w-[var(--editor-rail-w)] shrink-0 flex-col overflow-y-auto border-r border-zinc-200/80 bg-white`}>
           <button className="mobile-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="关闭角色面板">✕</button>
           <div className="border-b border-zinc-200 p-2">
             <Dropzone compact />
@@ -285,10 +285,10 @@ export function EditorShell() {
           <Timeline />
         </main>
 
-        {/* Right：悬浮 Inspector */}
+        {/* Right：停靠 Inspector（实心侧栏，不覆盖视口） */}
         {inspectorOpen ? (
-          <aside className="editor-inspector absolute top-2 right-2 bottom-2 z-20 flex w-[clamp(18rem,25vw,22rem)] flex-col overflow-hidden rounded-2xl border border-white/80 bg-white/90 shadow-[0_18px_60px_-24px_rgba(15,23,42,.28)] backdrop-blur-xl">
-            <div className="sticky top-0 z-10 border-b border-zinc-200 bg-white/95 backdrop-blur-xl">
+          <aside className="editor-inspector flex w-[var(--editor-rail-w)] shrink-0 flex-col overflow-hidden border-l border-zinc-200/80 bg-white">
+            <div className="shrink-0 border-b border-zinc-200">
               <div className="flex items-center px-3 py-2 text-xs font-bold text-zinc-600">
                 Inspector
                 <button onClick={() => setInspectorOpen(false)} title="关闭面板（视口右上可重新打开）" className="ml-auto rounded px-1.5 py-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700">

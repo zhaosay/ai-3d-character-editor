@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useAnimationStore } from '../../stores/animationStore';
+import { useIKStore } from '../../stores/ikStore';
 import { useCharacterStore } from '../../stores/characterStore';
 import { sampleAnimation } from '../../core/animation/sampler';
 import { applySampledPose } from '../../core/animation/applyPose';
@@ -9,6 +10,7 @@ import { applyFaceTracks } from '../../core/face/morphs';
 import { activeChains, solveHeldSwordGrip } from '../../core/weapon/applyHeldGrip';
 import { useFootLockStore } from '../../stores/footLockStore';
 import { FootLockRuntime } from '../../services/motion/footLockRuntime';
+import type { Vec3Tuple } from '../../types/global';
 
 /** Canvas 内：播放时推进时间并应用 pose。时间写入 store，Timeline/Inspector 跟随。 */
 export function PlaybackEngine() {
@@ -84,7 +86,7 @@ export function ScrubApplier() {
     try {
       const pins: IKPin[] = [];
       for (const c of Object.values(useIKStore.getState().chains)) {
-        if (c?.enabled) pins.push({ def: c.def, target: [...c.target], polePoint: [...c.polePoint] });
+        if (c?.enabled) pins.push({ def: c.def, target: [...c.target] as Vec3Tuple, polePoint: [...c.polePoint] as Vec3Tuple });
       }
       const footLockOn = useFootLockStore.getState().enabled;
       if (footLockOn) {
