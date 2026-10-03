@@ -19,7 +19,8 @@ import type { ToolName } from './toolTypes';
 
 export interface ToolParam {
   name: string;
-  type: 'string' | 'number' | 'boolean' | 'number[]' | 'object' | 'object[]';
+  /** `number[][]` = 数值二维数组（如路径点序列 [[x,y,z],…]）。 */
+  type: 'string' | 'number' | 'boolean' | 'number[]' | 'number[][]' | 'object' | 'object[]';
   /** 是否必填（对应 handler 里的 reqStr/reqNum）。 */
   required: boolean;
   desc: string;
@@ -42,13 +43,15 @@ export interface ToolDoc {
   errors?: readonly string[];
 }
 
+type ParamExample = ToolParam['example'] | readonly unknown[];
+
 const P = (
   name: string,
   type: ToolParam['type'],
   required: boolean,
   desc: string,
-  extra: Partial<ToolParam> = {},
-): ToolParam => ({ name, type, required, desc, ...extra });
+  extra: Omit<Partial<ToolParam>, 'example'> & { example?: ParamExample } = {},
+): ToolParam => ({ name, type, required, desc, ...extra }) as ToolParam;
 
 const VEC3 = '世界坐标 [x, y, z]';
 const BONE = '骨骼名或语义名（如 "spine"、"upperArm.L"）';
@@ -68,7 +71,9 @@ export const TOOL_DOCS: Record<ToolName, ToolDoc> = {
     summary: '读骨架：骨名、语义、层级。',
     detail: '只读。返回每根骨的 name/semantic/parent。用于确认能操作哪些骨骼，不要凭空编造骨名。',
     mutates: false,
-    params: [],
+    params: [
+      P('query', 'string', false, '按名称/语义过滤（大小写不敏感的部分匹配）；省略则返回全部'),
+    ],
   },
   select_bone: {
     name: 'select_bone',
@@ -82,7 +87,7 @@ export const TOOL_DOCS: Record<ToolName, ToolDoc> = {
     name: 'modify_bone',
     summary: '改骨骼姿态（绝对或增量）。',
     detail:
-      '五种模式至少给一种：rotationEulerDeg/rotationDeltaDeg 绝对或增量欧拉角(度)，position/positionDelta 绝对或增量位置。绝对值基于 rest 姿态。',
+      '四种模式至少给一种：rotationEulerDeg（绝对欧拉角，度）、rotationDeltaDeg（增量欧拉角）、position（绝对位置）、positionDelta（增量位置）。绝对值基于 rest 姿态。',
     mutates: true,
     params: [
       P('bone', 'string', true, BONE, { example: 'spine' }),
@@ -134,6 +139,8 @@ export const TOOL_DOCS: Record<ToolName, ToolDoc> = {
       P('prompt', 'string', true, '动作描述', { example: '角色从站立缓慢坐下再站起' }),
       P('clarification', 'string', false, '补充约束（≤1000字）'),
       P('segments', 'object[]', false, '显式分段规划，每段含 t0/t1/模板/强度'),
+      P('interpretation', 'object', false, '对描述的理解结果：certainty(high/medium/low)、reasons[]、questions[]、missingInfo[]'),
+      P('duration', 'number', false, '时长（秒），0.5–30；缺省由分段终点或默认值推断'),
     ],
     errors: ['NO_CHARACTER', 'BAD_ARGS'],
   },
@@ -192,14 +199,17 @@ export const TOOL_DOCS: Record<ToolName, ToolDoc> = {
   set_camera_keyframe: {
     name: 'set_camera_keyframe',
     summary: '给镜头打关键帧。',
-    detail: '需先生成预演动画。镜头字段可能被锁定（FIELD_LOCKED）。',
+    detail: '需先生成预演动画。镜头字段可能被锁定（FIELD_LOCKED）。upsert 按 time 覆盖写入。',
     mutates: true,
     params: [
-      P('operation', 'string', true, '操作', { values: ['add', 'update', 'remove'], example: 'add' }),
+      P('operation', 'string', true, '操作', { values: ['upsert', 'remove'], example: 'upsert' }),
       P('time', 'number', true, '时间（秒）', { example: 0.5 }),
-      P('fov', 'number', false, '视场角（度）', { example: 40 }),
+      // handler 对 upsert 强制要求这三个，目录漏了会让模型无从得知 → 必然 BAD_ARGS
+      P('position', 'number[]', false, `机位 ${VEC3}`, { example: [2.5, 1.8, 3.2] }),
+      P('target', 'number[]', false, `看向点 ${VEC3}`, { example: [0, 1, 0] }),
+      P('fov', 'number', false, '视场角（度），15–100', { example: 45 }),
     ],
-    errors: ['NO_ANIMATION', 'FIELD_LOCKED'],
+    errors: ['NO_ANIMATION', 'FIELD_LOCKED', 'BAD_ARGS'],
   },
   set_previs_effect: {
     name: 'set_previs_effect',
@@ -214,9 +224,10 @@ export const TOOL_DOCS: Record<ToolName, ToolDoc> = {
       P('duration', 'number', true, '持续（秒）'),
       P('scale', 'number', false, '缩放'),
       P('color', 'string', false, '颜色'),
-      P('path', 'string', false, '特效贴图/路径'),
+      // handler 要求 2–64 个三维点的数组；写成 string 会让模型直接传错类型
+      P('path', 'number[][]', false, '特效路径：2–64 个三维点数组', { example: [[0, 1.3, 0], [0.4, 1.1, 0.6]] }),
       P('position', 'number[]', false, `位置 ${VEC3}`),
-      P('bladeSweep', 'boolean', false, '是否刀光扫掠'),
+      P('bladeSweep', 'number[][]', false, '刀光扫掠样本：2–64 个 {base,tip} 对', { example: [{ base: [0, 1, 0], tip: [0, 1.8, 0] }] }),
       P('id', 'string', false, '特效 id（update/remove 必填）'),
     ],
   },
@@ -250,6 +261,7 @@ export const TOOL_DOCS: Record<ToolName, ToolDoc> = {
       P('chain', 'string', true, 'IK 链', { values: ['arm.L', 'arm.R', 'leg.L', 'leg.R'], example: 'arm.L' }),
       P('enable', 'boolean', false, '是否启用（缺省=切换）'),
       P('target', 'number[]', false, `IK 目标 ${VEC3}`),
+      P('targetDelta', 'number[]', false, `目标增量 ${VEC3}（在当前目标上叠加，省去先查绝对坐标）`),
       P('polePoint', 'number[]', false, `极向量 ${VEC3}`),
     ],
     errors: ['CHAIN_MISSING'],
@@ -292,8 +304,8 @@ export const TOOL_DOCS: Record<ToolName, ToolDoc> = {
     detail: '可按 kind 指定修法。',
     mutates: true,
     params: [
-      P('kind', 'string', false, '修复类型（如 ground/balance）'),
-      P('foot', 'string', false, '指定脚（foot.L/foot.R）'),
+      P('kind', 'string', false, '修复类型', { values: ['penetration', 'footSlide', 'accelSpike', 'balance'], example: 'penetration' }),
+      P('foot', 'string', false, '指定脚', { values: ['L', 'R'], example: 'L' }),
       P('time', 'number', false, '时间（秒）'),
     ],
   },

@@ -35,6 +35,22 @@ describe('材质覆盖 store', () => {
     expect(useMaterialStore.getState().applyTo(root)).toBe(0);
   });
 
+  it('改覆盖后同场景会重新施加（PBR 面板滑块必须真的生效）', () => {
+    // 回归测试：守卫曾只比较 scene.uuid，且 setOverride 不重置 appliedKey，
+    // 导致首次施加之后所有滑块/贴图改动都被早退吞掉 —— 面板动了、画面不动。
+    const root = scene();
+    const path = listMaterials(root)[0].path;
+    useMaterialStore.getState().setOverride(path, { metalness: 0.5 });
+    expect(useMaterialStore.getState().applyTo(root)).toBe(1);
+
+    // 同一场景，只改了 overrides
+    useMaterialStore.getState().setOverride(path, { metalness: 0.95 });
+    expect(useMaterialStore.getState().applyTo(root)).toBe(1);
+
+    const m = findMaterialByPath(root, path)!;
+    expect(m.metalness).toBeCloseTo(0.95, 6);
+  });
+
   it('换角色（不同场景）会重新施加', () => {
     const a = scene(); const b = scene();
     const pa = listMaterials(a)[0].path;

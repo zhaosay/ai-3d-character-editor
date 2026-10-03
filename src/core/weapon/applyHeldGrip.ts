@@ -18,14 +18,12 @@ export function activeChains(): ChainList {
 /**
  * 持剑时解算双手握持，直接作用于场景对象。
  *
- * ## 为什么必须显式接进播放循环
+ * ## 现状：生产路径不走这里
  *
- * 三个既有求解器**都不在播放时运行**：
- *   - `PlaybackEngine` 播放分支只做 FK（applySampledPose）
- *   - `IKHandles` / `IKSolver` 有 `if (playing) return`
- *   - `ScrubApplier` 只在暂停且时间变化时跑
- * 而剑的世界变换来自主手 FK（WorldStage.tsx:94-103），所以不接这里，
- * 副手在播放中就永远握不住剑柄 —— 这正是原始 bug 的成因之一。
+ * `SwordGripRuntime.tsx` 是实际生效的每帧求解器，它**直接调 `solveTwoHandedGrip`**，
+ * 不经过本模块；因此下面的 `setLast` 诊断链路目前不会更新。
+ * 本模块保留作**单步驱动**（调试钩子、将来的 UI 实时读数），
+ * 不要把它当成「播放链路的一部分」—— 那是错的。
  *
  * ## 调用顺序要求
  *

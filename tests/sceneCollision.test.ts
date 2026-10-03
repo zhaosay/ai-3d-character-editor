@@ -29,6 +29,26 @@ describe('sampled character and prop collision', () => {
     ]);
   });
 
+  it('正确坐姿不被当成穿模：髋落在椅面顶（椅面高度必须用中心系局部坐标）', () => {
+    // 回归：permitsExpectedContact 的局部系原点在盒中心（position.y + h/2），
+    // 但 chair 分支按「底面为原点」写 0.48h+0.04，漏减 h/2。
+    // 结果 h=0.9m 时算出 0.472（世界 0.922m）而真实座面 0.472m，恒判为
+    // 「非预期接触」→ 每次都报髋与椅子穿模。
+    const character = new THREE.Group();
+    // 椅面顶世界高度 = 0.48*0.9 + 0.04 = 0.472；髋中心略高一点即正常坐姿
+    const pelvis = new THREE.Bone(); pelvis.name = 'hips'; pelvis.position.set(0, 0.472 + 0.06, 0); character.add(pelvis);
+    character.updateWorldMatrix(true, true);
+    const chair: StageProp = { id: 'chair-ok', kind: 'chair', position: [0, 0, 0], rotationY: 0, size: { width: 0.5, height: 0.9, length: 0.5 } };
+    const findings = inspectMotionCollisions(
+      character,
+      createEmptyAnimation('sit ok', 30, 1),
+      [chair],
+      [{ t0: 0, t1: 1, template: 'sit' }],
+      [{ phase: 'sit', actionIndex: 0, bodyPart: 'pelvis', propId: chair.id, surface: 'seat', relation: 'support' }],
+    );
+    expect(findings.filter((f) => /chair-ok/.test(f.propId ?? ''))).toEqual([]);
+  });
+
   it('warns when declared seat support floats above the seat surface', () => {
     const character = new THREE.Group();
     const pelvis = new THREE.Bone(); pelvis.name = 'hips'; pelvis.position.set(0, 1.0, 0); character.add(pelvis);

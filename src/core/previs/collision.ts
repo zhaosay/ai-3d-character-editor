@@ -560,9 +560,12 @@ function permitsExpectedContact(
   if (!bodyMatches) return false;
   if (contact.surface === 'mattress' || contact.surface === 'seat') {
     const { start, end } = segmentInPropSpace(a, b, prop);
+    // 注意：segmentInPropSpace 的局部系原点是**盒中心**（position.y + h/2），
+    // 所以「自底面起算的高度」必须减 h/2 才能在这个系里比较。
+    // sofa 分支的 h*0.08 实为 0.58h − 0.5h，已是中心系；chair 分支曾漏减。
     const surfaceLocalY = contact.surface === 'seat' && prop.kind === 'chair'
-      // 椅面顶的真实局部高度（座板盒：center 0.48h、half-height 0.04）
-      ? prop.size.height * 0.48 + 0.04
+      // 椅面顶：底面系 0.48h + 半厚 0.04 → 中心系需再减 0.5h
+      ? prop.size.height * 0.48 + 0.04 - prop.size.height * 0.5
       : contact.surface === 'seat' && prop.kind === 'sofa'
         ? prop.size.height * 0.08
         : prop.size.height / 2;

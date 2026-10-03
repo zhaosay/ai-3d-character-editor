@@ -107,6 +107,60 @@ describe('与 toolRegistry handler 交叉校验（防文档漂移）', () => {
     }
   });
 
+  /**
+   * 从 handler 里抽出某个参数「实际被接受的取值集合」。
+   *
+   * 覆盖两种常见写法：
+   *   1. 白名单：  ['a','b'].includes(kind)
+   *   2. 黑名单式：`if (x !== 'a') return err(...)` / `if (x !== 'b' && x !== 'a') return err(...)`
+   * 抽不到返回 null（表示无法静态判定，跳过而不是误报）。
+   */
+  function handlerAcceptedValues(tool: ToolName, param: string): Set<string> | null {
+    const body = handlerBody(tool);
+    if (!body) return null;
+
+    // 写法 1：['a','b'].includes(param)
+    const wl = new RegExp(`\\[([^\\]]*?)\\]\\s*\\.includes\\(\\s*${param}\\b`).exec(body);
+    if (wl) {
+      const vals = [...wl[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+      if (vals.length) return new Set(vals);
+    }
+
+    // 写法 2：对 param 的相等性否定判断，取被排除掉的字面量
+    const eqs = [...body.matchAll(new RegExp(`${param}\\s*!==?\\s*'([^']+)'`, 'g'))].map((m) => m[1]);
+    if (!eqs.length) return null;
+    const errGuards = [...body.matchAll(new RegExp(`${param}\\s*!==?\\s*'([^']+)'[^)]*return err\\(`, 'g'))].map((m) => m[1]);
+    if (errGuards.length === 0) return null;
+    // 被 err 挡住的取值 = handler 不接受的；其余都是接受的
+    return new Set([...new Set([...body.matchAll(/'([a-zA-Z_]+)'/g)].map((m) => m[1]))].filter((v) => !errGuards.includes(v)));
+  }
+
+  it('目录里的枚举取值必须被 handler 真正接受', () => {
+    for (const name of TOOL_DOC_NAMES) {
+      for (const p of TOOL_DOCS[name].params.filter((x) => x.values?.length)) {
+        const accepted = handlerAcceptedValues(name, p.name);
+        if (!accepted) continue; // 静态判不出来，不误报
+        for (const v of p.values!) {
+          expect(
+            accepted.has(v),
+            `${name}.${p.name} 目录声明取值 "${v}"，但 handler 的接受集合里没有它（接受: ${[...accepted].join('/')}）`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('handler 读取的参数都必须在目录里声明（否则模型无从得知）', () => {
+    // 这条能抓住 set_camera_keyframe 曾漏声明 position/target：
+    // handler 强制 reqVec3 两者，而目录里只有 operation/time/fov → 模型必然 BAD_ARGS。
+    for (const name of TOOL_DOC_NAMES) {
+      const declared = new Set(TOOL_DOCS[name].params.map((p) => p.name));
+      for (const used of handlerArgs(name)) {
+        expect(declared.has(used), `${name}.${used} 被 handler 读取但目录未声明`).toBe(true);
+      }
+    }
+  });
+
   it('必填参数在 handler 中确实被强制校验（reqXxx）', () => {
     for (const name of TOOL_DOC_NAMES) {
       const body = handlerBody(name);

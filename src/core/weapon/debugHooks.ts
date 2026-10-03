@@ -4,6 +4,7 @@ import { useIKStore } from '../../stores/ikStore';
 import { useWorldStore } from '../../stores/worldStore';
 import { useWeaponGripStore } from '../../stores/weaponGripStore';
 import { useAnimationStore } from '../../stores/animationStore';
+import { useMaterialStore } from '../../stores/materialStore';
 import { solveHeldSwordGrip } from './applyHeldGrip';
 import { swordAnchorsWorld } from './grip';
 
@@ -30,6 +31,7 @@ export function installDebugHooks(): void {
     world: useWorldStore,
     grip: useWeaponGripStore,
     animation: useAnimationStore,
+    material: useMaterialStore,
     solveHeldSwordGrip,
     swordAnchorsWorld,
   };

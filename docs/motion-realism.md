@@ -736,3 +736,60 @@ swing-twist 分解后分别钳制（摆动 ±60°、扭转 ±80°），达不到
   已确认不进生产包（参照 avatar-stage 的 `?debug`）。
 
 注意：`npx tsc --noEmit` 会漏报（曾漏掉删 import 造成的错误），**以 `npm run build` 的 `tsc -b` 为准**。
+
+## 二十、注释契约漂移审计（29 条，含 2 条让功能完全失效）
+
+以 bridgeClient 那条已证实的偏差为样板，通读 8 个区域（agent / viewport / weapon / ik /
+gaits / previs / stores），找出「注释声明的行为」与「实际实现」不一致处。
+
+### 高危（功能不生效）
+
+**H1 `collision.ts:565` 椅面高度用错参考系 → 「坐椅子」必报穿模**
+`segmentInPropSpace` 的局部系原点在**盒中心**（`position.y + h/2`），
+但 chair 分支按底面系写 `0.48h + 0.04`，漏减 `h/2`。同函数 sofa 分支的 `h*0.08`
+正是 `0.58h − 0.5h`（中心系），自证坐标系 —— 只有 chair 错。
+h=0.9m 时算出局部 0.472（世界 0.922m）而真实座面 0.472m，容差仅 radius≈0.13 → 恒 false。
+**一处减法**：`0.48h + 0.04 − 0.5h`。
+
+**H2 `materialStore.ts:109` 守卫键漏掉 overrides → 整个 PBR 面板失效**
+`appliedKey` 只存 `scene.uuid`，而 `setOverride`/`setTexture` 不重置它；
+`MaterialPanel` 的 effect 依赖 `overrides` 会重新调 `applyTo` → 撞上早退。
+**上一轮交付的「PBR 材质面板已完成」实际上第一次改动之后就完全不生效。**
+改为指纹 `scene.uuid + JSON.stringify(overrides)`。
+
+**H3 `toolCatalog.ts` `set_camera_keyframe` 契约 100% 不可用**
+目录写 `operation: add/update/remove`，handler 只收 `upsert|remove`；
+且 handler 强制要求的 `position`/`target` 在目录里**完全缺失** → 模型必然 BAD_ARGS。
+
+**H4 防漂移交叉校验本身只校验参数名** —— 取值/类型/必填性全不校验，这是 H3/M1/M2 的根因。
+
+### 中/低危摘要
+
+- **M1** `set_previs_effect` 的 `path`/`bladeSweep` 类型写成 string/boolean，实为二维数组
+- **M2** `repair_physics` 的 `kind`/`foot` 取值写错（`ground`、`foot.L` 会被拒）
+- **M3** `footLock.contactTolerance` 是死配置，注释虚构的「滞回」不存在
+- **M6/M7** 我自己上一轮的注释漂移：`gripSolve` 声称「本轮不解决腕部定向」但同文件已实现；
+  `applyHeldGrip` 声称「必须接进播放循环」但生产路径走 `SwordGripRuntime`，诊断数据永不更新
+- **L8** handler 读取但目录未声明的参数：`inspect_skeleton.query`、
+  `generate_motion.interpretation`/`duration`、`apply_ik.targetDelta`（共 4 处）
+
+### 新增防漂移校验（已验证能挡住回归）
+
+- 「目录里的枚举取值必须被 handler 真正接受」——
+  从 handler 抽白名单 `['a','b'].includes(x)` 或 `x !== 'a' return err` 反推接受集合。
+  **注入验证**：把 `repair_physics.kind` 改回 `ground` → 测试失败并报出正确接受集合。
+- 「handler 读取的参数都必须在目录里声明」——
+  **注入验证**：删掉 `apply_ik.targetDelta` 声明 → 测试失败。
+
+### 修复后验证
+
+```
+842 passed / 7 skipped，lint 0 errors，build 通过
+scripts/verify-pbr-ui.mjs：metalness 0 → 0.87，applyTo 返回 1（修前 0）
+```
+
+### 一个方法论教训
+
+`applyTo` 早退这个 bug，**9 个 pbrStore 单测全绿**却功能完全失效 ——
+因为每个用例都先 `appliedKey: null` 且只 apply 一次，从不测「apply → 改 override → 再 apply」。
+「测试通过」和「功能可用」之间存在真实缺口，跨 store 的**状态机式**行为必须补这类用例。

@@ -30,7 +30,12 @@ interface MaterialState {
    * 否则面板显示「未修改」而材质仍停在被改过的状态（滑块与画面不一致）。
    */
   originals: Record<string, Record<string, string | number>>;
-  /** 已按 overrides 重新施加（避免每次渲染都重复写材质） */
+  /**
+   * 已施加的「场景 uuid + overrides」指纹（避免每次渲染都重复写材质）。
+   *
+   * 必须包含 overrides：曾只存 scene.uuid，导致首次施加之后
+   * 所有滑块/贴图改动都被早退吞掉 —— 面板动了、画面不动。
+   */
   appliedKey: string | null;
   /** 正在加载贴图的 path#slot */
   busyKey: string | null;
@@ -106,7 +111,9 @@ export const useMaterialStore = create<MaterialState>((set, get) => ({
   applyTo: (scene) => {
     if (!scene) return 0;
     const { overrides, appliedKey } = get();
-    if (appliedKey === scene.uuid) return 0;
+    // 指纹 = 场景 + 覆盖内容。overrides 一变就必须重新施加。
+    const key = scene.uuid + '|' + JSON.stringify(overrides);
+    if (appliedKey === key) return 0;
     let applied = 0;
     for (const [path, patch] of Object.entries(overrides)) {
       const m = findMaterialByPath(scene, path);
@@ -134,7 +141,7 @@ export const useMaterialStore = create<MaterialState>((set, get) => ({
       }
       applied++;
     }
-    set({ appliedKey: scene.uuid, sceneRef: scene });
+    set({ appliedKey: key, sceneRef: scene });
     return applied;
   },
 
