@@ -38,13 +38,6 @@ button {
   transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
 }
 
-.editor-inspector-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 3px;
-  padding: 0 10px 8px;
-}
-
 /**
  * 侧栏宽度：左右共用同一个变量，保证**严格等宽**。
  *
@@ -58,25 +51,7 @@ button {
   --editor-rail-w: clamp(15rem, 19vw, 19rem);
 }
 
-.editor-inspector-tabs button {
-  min-height: 34px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: #6e6e73;
-  font-size: 12px;
-  font-weight: 550;
-  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
-}
 
-.editor-inspector-tabs button:hover { background: #f5f5f7; color: #1d1d1f; }
-.editor-inspector-tabs button:active { transform: scale(.98); }
-.editor-inspector-tabs button.is-active {
-  background: #e8f2ff;
-  color: #0066d6;
-  font-weight: 650;
-}
-.editor-inspector-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .editor-shell button[class~="bg-emerald-600"],
 .editor-shell button[class~="bg-emerald-700"],

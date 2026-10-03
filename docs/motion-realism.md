@@ -669,3 +669,70 @@ swing-twist 分解后分别钳制（摆动 ±60°、扭转 ±80°），达不到
 
 `motion.test.ts` 的骨骼 fixture 补齐 `chest/hips/shin.L/shin.R/foot.L/foot.R`
 （持剑模板现在真的用到躯干与下肢）。
+
+## 十九、UI 布局重构与「单测通过≠功能可用」
+
+### 布局：对照参考项目实测
+
+参考 `thomasdavis/posers`（`grid-template-columns: 280px 1fr 280px`，时间轴 `grid-column 1/-1`）
+与 `rana-jatin/avatar-stage`（`#stage{flex:1}` + `#ui{360px}` + `details.panel` 折叠组）。
+
+**共同点：没有任何面板浮在 3D 画面上。** 本项目原本是唯一违反的。
+
+| 项 | 修前 | 修后 |
+|---|---|---|
+| Inspector | `position:absolute` + `backdrop-blur(24px)` | `static`，实心停靠 |
+| 永久遮挡视口 | **352px = 宽度 30%、高度 99%** | **0px**（仅 1px 边框） |
+| 左右栏宽 | 259px / 352px（差 93px） | 274 / 274（单一 `--editor-rail-w`） |
+| 角色偏离屏幕中线 | **129px** | **1px** |
+| 面板组织 | 4 标签页藏起 15/20 个面板 | 8 个折叠组，标题常驻 |
+
+### 一个被证伪的假设
+
+曾推测「去掉 `backdrop-blur` 带来 17→51 FPS 提升」。**同页 A/B 对照实验证伪**：
+开 41 FPS / 关 40 FPS，差值在噪声内。撤回该结论 —— 收益只有遮挡，没有性能。
+
+### 后端轮询刷屏
+
+`bridgeClient.ts` 注释声明「未配置 BRIDGE_TOKEN 时不发起任何请求」，实现却**无条件每 3s 探一次**。
+补 `!token` 守卫；`StoryboardPanel` 的 15s 硬打改为失败降频 60s。
+控制台错误累计 t=65s 由 **20 条降到 8 条**（浏览器层 CORS 错误 catch 拦不住，只能不发/降频）。
+
+### 首屏与可发现性
+
+- 首屏自动载入示例角色（`buildDemoCharacter()` 纯程序化，无网络依赖）；
+  延后 350ms + 二次检查 `characterStore.meta`，避免与「打开项目」抢跑。
+- 手绘捏人默认收起（原本空的 2D 草图占左栏 400px，并把 Skeleton Explorer 挤出视野）。
+
+### 双手握持：两个「单测全过但功能没跑」的缺陷
+
+纯函数 20 个测试全绿，但**真实应用里从未生效**。逐条查出来：
+
+1. **调用点在错误的生命周期里。** 原先挂在 `PlaybackEngine` 的 useFrame，
+   而那个 useFrame 有两道早退：必须 `playing` **且**当前动画带轨道。
+   静止看场景时两者都不满足，`solveTwoHandedGrip` 一次都不执行 ——
+   现象是「播放时偶尔对、停下来看又松开了」。`ScrubApplier` 也救不了（只在暂停且时间变化时触发）。
+   改为独立每帧组件 `SwordGripRuntime`，挂在 `PlaybackEngine` / `BlinkApplier` / `IKSolver` 之后。
+   不用 `renderPriority`：R3F 里非 0 的 priority 会接管整个渲染循环。
+
+2. **关闭开关不复原骨骼。** IK 直接改骨骼，关掉后没人还原，
+   角色**冻结在上一次 IK 解出的姿势**（手仍粘在剑柄上，看起来像开关没用）。
+   现保存 IK 前的局部四元数/位移，关闭时写回。
+
+运行时实测（demo rig，臂长 580mm）：
+
+| | 双手间距 | 副手→柄尾 |
+|---|---|---|
+| 关（纯 FK） | 276mm | 216mm |
+| **开（双手握持）** | **97mm** | **14mm** |
+
+### 验证基建
+
+- `scripts/measure-layout.mjs`：真实浏览器读几何盒，断言遮挡量/等宽/backdrop-filter/控制台错误。
+- `scripts/fps-ab.mjs`：同页 A/B 帧率对照（用于证伪上面的性能假设）。
+- `scripts/verify-grip-ui.mjs`：10 项 UI 端到端（加剑→展开分组→开关→存盘读回）。
+- `scripts/verify-grip-geometry.mjs`：读运行时骨骼世界坐标，对比开关两种状态。
+- `src/core/weapon/debugHooks.ts`：**仅 DEV** 动态 import 挂 `window.__editor`，
+  已确认不进生产包（参照 avatar-stage 的 `?debug`）。
+
+注意：`npx tsc --noEmit` 会漏报（曾漏掉删 import 造成的错误），**以 `npm run build` 的 `tsc -b` 为准**。

@@ -187,6 +187,20 @@ describe('project save/load', () => {
     expect(() => parseProjectFile(JSON.stringify(impossiblePose))).toThrow(/上下顺序不合理/);
   });
 
+  it('双手握持开关随项目存取，且旧项目缺字段时默认开启', () => {
+    const project = createEmptyProject();
+    project.settings.twoHandGrip = false;
+    expect(parseProjectFile(serializeProject(project)).project.settings.twoHandGrip).toBe(false);
+    project.settings.twoHandGrip = true;
+    expect(parseProjectFile(serializeProject(project)).project.settings.twoHandGrip).toBe(true);
+
+    // 旧项目文件没有这个字段：不能崩，且必须落到「开」——
+    // 单臂摆动不是双手剑术，缺省必须是正确行为而不是退回旧 bug。
+    const legacy = JSON.parse(serializeProject(createEmptyProject())) as Record<string, unknown>;
+    delete (legacy['settings'] as Record<string, unknown>)['twoHandGrip'];
+    expect(parseProjectFile(JSON.stringify(legacy)).project.settings.twoHandGrip).toBe(true);
+  });
+
   it('未生成角色的手绘草稿也随项目保存并过滤损坏点位', () => {
     const p = createEmptyProject();
     p.sketchDraft = {

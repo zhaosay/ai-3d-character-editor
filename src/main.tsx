@@ -19,6 +19,11 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => bridge?.stop())
 }
 
+// 开发期调试钩子（生产构建里这段会被 tree-shake 掉）
+if (import.meta.env.DEV) {
+  void import('./core/weapon/debugHooks').then((m) => m.installDebugHooks())
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

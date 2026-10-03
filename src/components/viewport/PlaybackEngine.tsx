@@ -7,7 +7,7 @@ import { sampleAnimation } from '../../core/animation/sampler';
 import { applySampledPose } from '../../core/animation/applyPose';
 import { applyPoseWithIK, type IKPin } from '../../core/ik/applyPoseWithIK';
 import { applyFaceTracks } from '../../core/face/morphs';
-import { activeChains, solveHeldSwordGrip } from '../../core/weapon/applyHeldGrip';
+import { activeChains } from '../../core/weapon/applyHeldGrip';
 import { useFootLockStore } from '../../stores/footLockStore';
 import { FootLockRuntime } from '../../services/motion/footLockRuntime';
 import type { Vec3Tuple } from '../../types/global';
@@ -55,7 +55,6 @@ export function PlaybackEngine() {
       const pose = st.blendedPoseAt(t);
       if (!pose) { st.setPlaying(false); return; }
       applySampledPose(sceneObject, pose);
-      solveHeldSwordGrip(sceneObject);
       applyFaceTracks(sceneObject, active.faceTracks ?? [], t);
       if (footLockEnabled) {
         if (!runtime.current) runtime.current = new FootLockRuntime(activeChains(), footLockConfig);
@@ -99,8 +98,6 @@ export function ScrubApplier() {
           const t = Math.min(currentTime, i * dt);
           const pose = sampleAnimation(active, t);
           applyPoseWithIK(sceneObject, pose, pins);
-    // 持剑握持也要在 scrub 时解算，否则暂停看到的是「副手没握剑」的旧姿势
-    solveHeldSwordGrip(sceneObject);
           runtime.solve(sceneObject, t, dt);
         }
         useFootLockStore.getState().setSlip(0);
@@ -110,8 +107,6 @@ export function ScrubApplier() {
         if (pose.size > 0) {
           // 启用的 IK 链跟随求解，避免 FK 覆盖造成闪一帧
           applyPoseWithIK(sceneObject, pose, pins);
-    // 持剑握持也要在 scrub 时解算，否则暂停看到的是「副手没握剑」的旧姿势
-    solveHeldSwordGrip(sceneObject);
         }
       }
       applyFaceTracks(sceneObject, active.faceTracks ?? [], currentTime);

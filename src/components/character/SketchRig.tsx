@@ -54,7 +54,9 @@ function SketchRigEditor({ sketchSource, savedDraft }: { sketchSource: SketchSou
   const [editIndex, setEditIndex] = useState(Math.max(0, initialPoints.findIndex((point) => !point)));
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(true);
+  // 默认收起：展开时那个 2D 骨架草图约占左栏 400px，
+  // 而首屏它是空的（0/8 关节），还会把下方的 Skeleton Explorer 标题挤出视野。
+  const [open, setOpen] = useState(false);
 
   const nextIndex = points.findIndex((p) => !p);
   const completeLandmarks = Object.fromEntries(LANDMARK_ORDER.flatMap((key, i) => points[i] ? [[key, points[i]!]] : []));

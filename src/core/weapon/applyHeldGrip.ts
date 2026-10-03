@@ -7,7 +7,9 @@ import { solveTwoHandedGrip } from './gripSolve';
 import type { IKChainDef } from '../ik/types';
 
 /** 已检测到的 IK 链（过滤掉缺失/未初始化项）。 */
-export function activeChains(): IKChainDef[] {
+export type ChainList = IKChainDef[];
+
+export function activeChains(): ChainList {
   return Object.values(useIKStore.getState().chains)
     .map((c) => c?.def)
     .filter((d): d is IKChainDef => Boolean(d));

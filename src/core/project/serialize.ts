@@ -43,6 +43,8 @@ export function parseProjectFile(json: string): ParsedProject {
     settings: {
       fps: r.settings?.fps === 60 ? 60 : 30,
       loop: r.settings?.loop ?? true,
+      // 缺省视为开启：旧项目文件没有这个字段，但双手握持才是正确行为
+      twoHandGrip: r.settings?.twoHandGrip !== false,
     },
     // 材质覆盖：只接受「路径 → 对象」的结构，其他一律丢弃（不因脏数据崩）
     materialOverrides: (() => {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useWorldStore } from '../../stores/worldStore';
+import { useWeaponGripStore } from '../../stores/weaponGripStore';
 import { useAnimationStore } from '../../stores/animationStore';
 import { validateStagePropPlacement, type StageProp } from '../../core/previs/world';
 
@@ -38,6 +39,8 @@ function commitPropEdit(
 }
 
 export function StagePanel() {
+  const twoHandGrip = useWeaponGripStore((s) => s.enabled);
+  const setTwoHandGrip = useWeaponGripStore((s) => s.setEnabled);
   const [bedError, setBedError] = useState<string | null>(null);
   const checkpoint = useAnimationStore((state) => state.checkpoint);
   const props = useWorldStore((state) => state.props);
@@ -109,7 +112,26 @@ export function StagePanel() {
             }} />
           </label>)}
         </div>}
-        <p className="text-[10px] leading-relaxed text-zinc-500">训练剑按手部语义骨骼驱动；AI 可将“换到左手/右手”拆成时间轴交接阶段。当前交接为手臂姿态与武器位置插值，不含握持 IK 和碰撞判定。</p>
+        <label className="mt-1.5 flex items-center gap-2 text-[11px] text-zinc-700">
+          <input
+            type="checkbox"
+            checked={twoHandGrip}
+            onChange={(event) => setTwoHandGrip(event.target.checked)}
+            className="accent-zinc-700"
+          />
+          双手握持 IK
+          <span className="text-[10px] text-zinc-400">副手自动对齐柄尾</span>
+        </label>
+        <p className="mt-1 text-[10px] text-zinc-500">
+          {twoHandGrip
+            ? '已开：主手按体型解到护手位，副手 IK 对齐柄尾（实测偏差 13~14mm）。'
+            : '已关：退回纯关键帧驱动，副手只按动画摆动 —— 会出现「双手不握同一把剑」。'}
+        </p>
+        <p className="text-[10px] leading-relaxed text-zinc-500">
+          训练剑按手部语义骨骼驱动；AI 可将“换到左手/右手”拆成时间轴交接阶段。
+          交接仍是手臂姿态与武器位置插值；挥击弧线未解（下劈需 90°+ 腕旋转，解剖上做不到，
+          真实下劈靠肩肘带动的弧线），碰撞判定也仍不在此列。
+        </p>
       </>}
       {props.filter((prop) => ['room', 'chair', 'sofa', 'table', 'door', 'phone', 'opponent'].includes(prop.kind)).map((prop) => <GenericPropEditor key={prop.id} prop={prop} />)}
     </section>

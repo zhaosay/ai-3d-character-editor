@@ -8,6 +8,7 @@ import { FpsMeter, HighlightSync, SkeletonOverlay, EnvAndTone } from './SceneSyn
 import { PlaybackEngine } from './PlaybackEngine';
 import { BlinkApplier } from './BlinkApplier';
 import { IKHandles, IKSolver } from './IKHandles';
+import { SwordGripRuntime } from './SwordGripRuntime';
 import { CameraPlayback } from './CameraPlayback';
 import { useCameraStore } from '../../stores/cameraStore';
 import { WorldStage } from './WorldStage';
@@ -80,6 +81,8 @@ export function ViewportCanvas() {
         <BlinkApplier />
         <IKSolver />
         <IKHandles />
+        {/* 必须排在 IKHandles 之后：握持要在所有姿态写入之后再解算 */}
+        <SwordGripRuntime />
         <HighlightSync sceneObject={sceneObject} />
         <SkeletonOverlay sceneObject={sceneObject} />
       </Canvas>
