@@ -234,3 +234,103 @@ export function maxPathCurvature(points: Vec3Tuple[]): number {
 
 /** 最小可行转弯半径（米）：普通人步行约 0.5m。 */
 export const MIN_TURN_RADIUS = 0.5;
+
+/**
+ * 指定弧长处的曲率（1/米）。
+ *
+ * 用于弯道减速：曲率越大越要减速。航点处取相邻三点的外接圆曲率，
+ * 直线段返回 0。
+ */
+export function pathCurvature(points: Vec3Tuple[], s: number): number {
+  if (points.length < 3) return 0;
+  const lengths = arcLengths(points);
+  const total = lengths[lengths.length - 1];
+  if (total < 1e-8) return 0;
+  const d = Math.min(Math.max(s, 0), total);
+
+  let idx = points.length - 2;
+  for (let i = 0; i < points.length - 1; i++) {
+    if (d <= lengths[i + 1] + 1e-9) { idx = i; break; }
+  }
+  /**
+   * 取该点附近的**三个连续点**算外接圆曲率。
+   * 之前写成 `i0 = idx-1 / i1 = idx+1` 再判 `i0 === i1` 提前返回 0，
+   * 而三点路径的拐点恰好 i0=0、i1=1… 实际是 `max(0,idx-1)=0` 与 `min(n-2,idx+1)=1`
+   * 不相等但 `Math.min(i0+2, n-1)` 又取错了点，导致缓弧/尖角一律返回 0
+   * （实测两者都是 0，弯道减速完全没生效）。
+   */
+  const last = points.length - 1;
+  const ia = Math.max(0, Math.min(idx - 1, last - 2));
+  const ib = Math.min(ia + 1, last - 1);
+  const ic = Math.min(ia + 2, last);
+  if (ia === ib || ib === ic) return 0;
+  const a = new THREE.Vector3(...points[ia]).setY(0);
+  const b = new THREE.Vector3(...points[ib]).setY(0);
+  const c = new THREE.Vector3(...points[ic]).setY(0);
+
+  const ab = b.clone().sub(a);
+  const bc = c.clone().sub(b);
+  const l1 = ab.length();
+  const l2 = bc.length();
+  const l3 = c.clone().sub(a).length();
+  const area2 = Math.abs(ab.x * bc.z - ab.z * bc.x);
+  if (area2 < 1e-9 || l1 < 1e-6 || l2 < 1e-6) return 0;
+  const R = (l1 * l2 * l3) / (2 * area2);
+  return 1 / Math.max(R, 1e-6);
+}
+
+/**
+ * 躯干/视线**先行**量（弧度）。
+ *
+ * ## 为什么需要
+ *
+ * 真人转弯不是「整个身体同时转」：躯干（尤其胸廓与头）**先于脚步**开始偏，
+ * 骨盆与脚稍后跟上。整体一起转看起来像坦克转向。
+ *
+ * ## 模型
+ *
+ * 用「目标朝向 − 当前朝向」的**超前量**表示：越接近要转的角度，
+ * 躯干越领先。当前实现取朝向变化率的超前采样 ——
+ * 躯干朝向 = 根节点在 `leadMetres` 米**之前**的位置所对应的朝向。
+ * 转弯刚开始时根节点还没偏，但躯干已经朝新方向预置。
+ *
+ * 起点之前也要能超前（否则入弯第一步躯干不预置）：越界时钳到 [0, ∞)。
+ *
+ * @param headingAt 弧长→朝向 的函数
+ * @param arcLength 当前弧长
+ * @param leadMetres 超前距离（米）；0 = 不先行
+ */
+export function torsoLeadHeading(
+  headingAt: (arcLength: number) => number,
+  arcLength: number,
+  leadMetres: number,
+): number {
+  if (leadMetres <= 0) return headingAt(arcLength);
+  return headingAt(arcLength + leadMetres);
+}
+
+/** 躯干超前的典型距离（米）：约一步的 1/4。 */
+export const TORSO_LEAD_METRES = 0.22;
+
+/**
+ * 弯道速度系数（0..1）。
+ *
+ * ## 依据
+ *
+ * 真人转弯会减速：弯道内侧步幅变短、步频下降。Comfort 区在最小半径 0.5m 时
+ * 约 0.4–0.6 m/s，直线约 1.3 m/s —— 即弯道速度约为直线的 40%~50%。
+ *
+ * ## 模型
+ *
+ * 以最小可行半径为参考做归一：`kRef = 1/MIN_TURN_RADIUS = 2 rad/m`。
+ * 线性插值到 1（直线）到 `MIN_CURVE_SPEED_RATIO`（极限弯）。
+ * 超过 `1.6 × kRef` 视为超出步行能力，返回下限（并由调用方发告警）。
+ */
+export const MIN_CURVE_SPEED_RATIO = 0.45;
+
+export function curveSpeedFactor(curvature: number): number {
+  const kRef = 1 / MIN_TURN_RADIUS;
+  if (!Number.isFinite(curvature) || curvature <= 0) return 1;
+  const t = Math.min(curvature / (kRef * 1.6), 1);
+  return 1 - t * (1 - MIN_CURVE_SPEED_RATIO);
+}

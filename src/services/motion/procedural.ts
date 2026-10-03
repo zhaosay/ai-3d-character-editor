@@ -10,7 +10,7 @@ import {
   anticipationEnvelope, breathSignal, gaitCycle, gaitLeg, gaitPeriod, proximalDelay, strideForLeg,
 } from '../../core/motion/gaits';
 import { DEFAULT_SWORD_STANCE, scaleStanceToLeg } from '../../core/weapon/grip';
-import { arcLengthForProgress, bowedRoute, samplePathAtArcLength } from '../../core/motion/path';
+import { TORSO_LEAD_METRES, arcLengthForProgress, bowedRoute, curveSpeedFactor, pathCurvature, samplePathAtArcLength, torsoLeadHeading } from '../../core/motion/path';
 
 export type BoneMap = Partial<Record<HumanoidSemantic, string>>;
 /** 静息四元数（语义→快照 restLocal），模板偏移量以此为基准合成，适配任意绑定姿势。 */
@@ -134,6 +134,12 @@ function schedules(
   sitLeg?: { thighDeg: number; shinDeg: number; footDeg: number } | null,
   /** 实测腿长（米）：步态的步幅/周期必须随体型缩放，不能写死。 */
   legLength?: number | null,
+  /**
+   * 该时刻的弯道速度系数（0..1，1=直线）。真人转弯会减速
+   * （弯道内侧步幅变短、步频下降）；之前速度恒定，是「滑过去」的观感来源之一。
+   * 曲线函数在采样时才被调用，故这里可以传读取「稍后才填好」的表的闭包。
+   */
+  curveSpeedAt?: (timeSec: number) => number,
 ): Schedule {
   const TAU = Math.PI * 2;
   switch (template) {
@@ -203,13 +209,22 @@ function schedules(
     case 'march': {
       // 真实步态：左右腿反相半个周期；摆动期膝「先屈后伸」；髋部 2× 步频起伏；
       // 骨盆与胸廓反向扭转；摆臂时肘始终微屈。均来自 core/motion/gaits。
-      const period = gaitPeriod({ legLength: legLength ?? undefined });
+      const basePeriod = gaitPeriod({ legLength: legLength ?? undefined });
+      /**
+       * 弯道减速：把周期按速度系数拉长。
+       * 系数 <1 → 同样的时间里步数变少 → 步幅不变但步频下降、整体变慢。
+       * 这正是真人过弯的表现（不是「滑过去」，也不是原地踏步）。
+       */
+      const periodAt = (timeSec: number) => {
+        const f = curveSpeedAt?.(timeSec);
+        return f && f > 0.05 ? basePeriod * f : basePeriod;
+      };
       // 段首相位对齐到左脚触地，避免任意起步造成左右脚相位突变
       const legAt = (timeSec: number, side: 'L' | 'R') => {
-        const cyc = (timeSec / period) + (side === 'L' ? 0 : 0.5) - phase;
+        const cyc = (timeSec / periodAt(timeSec)) + (side === 'L' ? 0 : 0.5) - phase;
         return gaitLeg(cyc, { legLength: legLength ?? undefined });
       };
-      const body = (timeSec: number) => gaitCycle((timeSec / period) - phase);
+      const body = (timeSec: number) => gaitCycle((timeSec / periodAt(timeSec)) - phase);
       return {
         'thigh.L': (_t: number, timeSec = 0) => { const s = legAt(timeSec, 'L'); return [s.thigh, 0, 0]; },
         'thigh.R': (_t: number, timeSec = 0) => { const s = legAt(timeSec, 'R'); return [s.thigh, 0, 0]; },
@@ -613,6 +628,45 @@ function buildMarchRoute(
 type YawKey = Keyframe<number>;
 
 /**
+ * 记录躯干/头部的超前朝向。
+ *
+ * 躯干与视线用「根节点再往前 `TORSO_LEAD_METRES` 处的朝向」——
+ * 头比躯干更早（真人转头看路比转体更快），故头用两倍超前量。
+ */
+function recordTorsoLead(
+  route: Vec3Tuple[],
+  arcLength: number,
+  time: number,
+  torsoOut: YawKey[],
+  headOut: YawKey[],
+): void {
+  const headingAt = (s: number) => samplePathAtArcLength(route, s).heading;
+  const torso = (torsoLeadHeading(headingAt, arcLength, TORSO_LEAD_METRES) * 180) / Math.PI;
+  const head = (torsoLeadHeading(headingAt, arcLength, TORSO_LEAD_METRES * 2) * 180) / Math.PI;
+  torsoOut.push({ time, value: torso, interp: 'linear' });
+  headOut.push({ time, value: head, interp: 'linear' });
+}
+
+/** 把一组角度关键帧叠加到某骨的 Y 欧拉（度）。 */
+function addYawToTrack(
+  ks: Keyframe<QuatTuple>[],
+  yawKeys: YawKey[],
+): Keyframe<QuatTuple>[] {
+  if (yawKeys.length === 0) return ks;
+  return ks.map((k) => {
+    const yawDeg = sampleYawAt(yawKeys, k.time);
+    if (yawDeg === null) return k;
+    // 与 line 82 的 XYZ 欧拉序一致；sampleYawAt 返回度，需换算成弧度
+    const e = new THREE.Euler().setFromQuaternion(
+      new THREE.Quaternion(k.value[0], k.value[1], k.value[2], k.value[3]), 'XYZ',
+    );
+    e.y += yawDeg * D2R;
+    const q = new THREE.Quaternion().setFromEuler(e);
+    return { ...k, value: [q.x, q.y, q.z, q.w] as QuatTuple };
+  });
+}
+
+/**
  * 从动作描述推断走路的弯曲度。
  *
  * ## 为什么不给固定默认值
@@ -630,22 +684,6 @@ export function bowFromClause(clause: string): number {
   if (/绕开|绕过|避开|绕过障碍/.test(clause)) return 0.18;
   if (/弧线|拐弯|弯曲|绕一下|转弯|拐个/.test(clause)) return 0.12;
   return 0;
-}
-
-function samplePolyline(points: Vec3Tuple[], progress: number): Vec3Tuple {
-  if (points.length < 2) return [...(points[0] ?? [0, 0, 0])];
-  const lengths = points.slice(1).map((point, index) => new THREE.Vector3(...point).distanceTo(new THREE.Vector3(...points[index])));
-  const total = lengths.reduce((sum, length) => sum + length, 0);
-  if (total < 1e-8) return [...points.at(-1)!];
-  let remaining = total * Math.min(Math.max(progress, 0), 1);
-  for (let index = 0; index < lengths.length; index++) {
-    if (remaining <= lengths[index] || index === lengths.length - 1) {
-      const ratio = lengths[index] > 1e-8 ? remaining / lengths[index] : 1;
-      return points[index].map((value, axis) => value + (points[index + 1][axis] - value) * ratio) as Vec3Tuple;
-    }
-    remaining -= lengths[index];
-  }
-  return [...points.at(-1)!];
 }
 
 export function generatePlannedTracks(
@@ -676,6 +714,18 @@ export function generatePlannedTracks(
   let marchYaw: YawKey[] = [];
   /** 全程累积的朝向关键帧（角度），在轨道成型后叠加到髋骨。 */
   const marchYawKeys: YawKey[] = [];
+  /**
+   * 每个采样时刻的路径曲率（1/m），用于弯道减速。
+   * 之前速度恒定 —— 真人转弯会减速（弯道内侧步幅变短、步频下降）。
+   */
+  const curvatureAtTime = new Map<number, number>();
+  /**
+   * 躯干（胸/脊）与头部的**超前朝向**（角度）。
+   * 根节点用路径切线，躯干用「再往前 0.22m 的切线」——
+   * 真人转弯时躯干与视线先于脚步预置，整体一起转像坦克。
+   */
+  const torsoYawKeys: YawKey[] = [];
+  const headYawKeys: YawKey[] = [];
   let rootOffset: Vec3Tuple = [0, 0, 0];
   let interactionPosition: Vec3Tuple | null = restPositions.hips ? [...restPositions.hips] : null;
   // Every participating bone has keys in every segment, preventing interpolation
@@ -740,7 +790,24 @@ export function generatePlannedTracks(
     if (template === 'sit' && sitSolution?.degraded === 'seat-too-high') {
       warnings.push(`座面高于腿长可达范围（超出 ${(sitSolution.solution?.float ?? 0).toFixed(2)}m），坐姿将双脚悬空`);
     }
-    let sched = schedules(template, phase, segmentInteraction, seg.clause, onBareGround, sitSolution, legChain ? legChain.upper + legChain.lower : null);
+    /**
+     * 弯道减速查表：本段曲率在**下面的位移循环**里才逐点写入，
+     * 而 schedule 的曲线函数是采样时才调用的，所以这里传闭包即可。
+     */
+    const curveSpeedAt = (timeSec: number): number => {
+      let best = 0;
+      let bestDt = Number.POSITIVE_INFINITY;
+      for (const { time: t, k } of curvatureProfile) {
+        const dt = Math.abs(t - timeSec);
+        if (dt < bestDt) { bestDt = dt; best = k; }
+      }
+      return curveSpeedFactor(best);
+    };
+    let sched = schedules(
+      template, phase, segmentInteraction, seg.clause, onBareGround, sitSolution,
+      legChain ? legChain.upper + legChain.lower : null,
+      template === 'march' ? curveSpeedAt : undefined,
+    );
     if (template === 'wave') {
       const requestedSide = /左手|左臂/.test(seg.clause) ? 'L' : 'R';
       const fallbackSide = requestedSide === 'L' ? 'R' : 'L';
@@ -761,6 +828,54 @@ export function generatePlannedTracks(
      */
     const step = template === 'march' ? Math.min(STEP, gaitPeriod({ legLength: legChain ? legChain.upper + legChain.lower : undefined }) / 24) : STEP;
     const n = Math.max(2, Math.floor(span / step) + 1);
+
+    /**
+     * 走路路径的**预计算**。
+     *
+     * ## 为什么必须提前
+     *
+     * 弯道减速要按曲率缩放步态周期，而步态采样循环在本段**位置循环之前**
+     * （曲率表那时还是空的 → 减速完全不生效，实测步态周期数 16 vs 16 无差别）。
+     * 所以这里先算出整段路径与曲率剖面，供两处共用。
+     *
+     * `marchSampleAt` 是唯一的进度→路径采样入口，避免预计算与位置循环
+     * 两处逻辑分叉（分叉过一次：曾因两处不一致导致朝向与位移对不上）。
+     */
+    const marchLegLen = legChain ? legChain.upper + legChain.lower : null;
+    const marchStrideV = strideForLeg(marchLegLen);
+    const marchPeriodV = gaitPeriod({ legLength: marchLegLen ?? undefined });
+    const marchDistance = template === 'march'
+      ? Math.max(marchStrideV, Math.min(span * 3, (span / marchPeriodV) * marchStrideV))
+      : 0;
+    const restHip = restPositions.hips;
+    const marchRoute: Vec3Tuple[] = template === 'march' && restHip
+      ? buildMarchRoute(
+          [restHip[0], restHip[1], restHip[2] + walkedZ],
+          [restHip[0], restHip[1], restHip[2] + walkedZ + marchDistance],
+          bow, seg.viaPoints,
+        )
+      : [];
+    /** 第 i 个采样点的进度（含 smoothstep 与 speed 曲线），与位置循环共用。 */
+    const marchProgressAt = (i: number): number => {
+      const time = Math.min(seg.t0 + i * step, seg.t1);
+      const raw = Math.pow(Math.min(Math.max((time - seg.t0) / span, 0), 1), 1 / Math.min(Math.max(seg.speed ?? 1, 0.5), 2));
+      const sm = raw * raw * (3 - 2 * raw);
+      return sm;
+    };
+    const marchSampleAt = (i: number) => {
+      if (marchRoute.length < 2) return null;
+      const time = Math.min(seg.t0 + i * step, seg.t1);
+      const at = samplePathAtArcLength(marchRoute, arcLengthForProgress(marchRoute, marchProgressAt(i)));
+      return { time, ...at, curvature: pathCurvature(marchRoute, at.arcLength) };
+    };
+    /** 本段曲率剖面（按时间），步态减速查表用。 */
+    const curvatureProfile: Array<{ time: number; k: number }> = [];
+    if (template === 'march') {
+      for (let i = 0; i < n; i++) {
+        const sm = marchSampleAt(i);
+        if (sm) curvatureProfile.push({ time: round3(sm.time), k: sm.curvature });
+      }
+    }
     for (const [semantic, fn] of Object.entries(sched) as Array<[HumanoidSemantic, ScheduleFn]>) {
       const boneName = bones[semantic];
       if (!boneName) {
@@ -860,17 +975,38 @@ export function generatePlannedTracks(
             : `第 ${segmentIndex + 1} 段走位已绕开静态道具占地；未计算全身及动态障碍碰撞`);
         }
         const keys: Keyframe<Vec3Tuple>[] = [];
+        /**
+         * 交互分支的走路也走**路径采样**，与通用分支同一套逻辑：
+         * 原来用 `samplePolyline(route, smooth)` —— 虽然走的是折线，
+         * 但**只移动髋骨、不给朝向**，所以绕开道具时身体不跟着转，
+         * 看起来像「滑过去」。这里补上弧长采样 + 朝向 + 弯道减速。
+         */
+        const routePath = route as Vec3Tuple[];
         for (let i = 0; i < n; i++) {
           const time = Math.min(seg.t0 + i * step, seg.t1);
           const progress = Math.pow(Math.min(Math.max((time - seg.t0) / span, 0), 1), 1 / Math.min(Math.max(seg.speed ?? 1, 0.5), 2));
           const smooth = progress * progress * (3 - 2 * progress);
-          keys.push({ time: round3(time), value: template === 'march'
-            ? samplePolyline(route, smooth)
+          const at = template === 'march' && routePath.length >= 2
+            ? samplePathAtArcLength(routePath, arcLengthForProgress(routePath, smooth))
+            : null;
+          keys.push({ time: round3(time), value: at
+            ? [at.position.x, at.position.y, at.position.z]
             : [
               from[0] + (target[0] - from[0]) * smooth,
               from[1] + (target[1] - from[1]) * smooth,
               from[2] + (target[2] - from[2]) * smooth,
             ], interp: 'linear' });
+          if (at) {
+            marchYawKeys.push({
+              time: round3(time),
+              value: (at.heading * 180) / Math.PI,
+              interp: 'linear',
+            });
+            if (template === 'march') {
+              curvatureAtTime.set(round3(time), pathCurvature(routePath, at.arcLength));
+              recordTorsoLead(routePath, at.arcLength, round3(time), torsoYawKeys, headYawKeys);
+            }
+          }
         }
         if (keys.at(-1)!.time < seg.t1 - TIME_EPS) keys.push({ time: seg.t1, value: [...destination], interp: 'linear' });
         const arr = perBonePosition.get(hipsName) ?? [];
@@ -965,23 +1101,6 @@ export function generatePlannedTracks(
          * 三个及以上点时直接当折线走（调用方可传 waypoints）。
          * 位置与朝向都按**弧长**采样，折线各段不等长时才不会速度脉动。
          */
-        const marchRoute: Vec3Tuple[] = template === 'march'
-          ? buildMarchRoute(
-              // 端点用**绝对**坐标：必须含已累积的 walkedZ 与本段 distance，
-              // 否则 bow=0 时会丢掉前进量（实测 z 恒为 0，角色原地踏步）。
-              [
-                restPosition[0] + fromOffset[0],
-                restPosition[1],
-                restPosition[2] + fromOffset[2] + walkedZ,
-              ],
-              [
-                restPosition[0] + toOffset[0],
-                restPosition[1],
-                restPosition[2] + toOffset[2] + walkedZ + distance,
-              ],
-              bow, seg.viaPoints,
-            )
-          : [];
         for (let i = 0; i < n; i++) {
           const time = Math.min(seg.t0 + i * step, seg.t1);
           const progress = (time - seg.t0) / span;
@@ -998,9 +1117,8 @@ export function generatePlannedTracks(
               : Math.min(1, progress / 0.9))
             : progress;
           const smooth = rootProgress * rootProgress * (3 - 2 * rootProgress);
-          const marchAt = template === 'march'
-            ? samplePathAtArcLength(marchRoute, arcLengthForProgress(marchRoute, smooth))
-            : null;
+          // 复用预计算的采样（marchRoute 已在步态采样前算好）
+          const marchAt = template === 'march' ? marchSampleAt(i) : null;
           // 步态带来的髋部垂直起伏（2× 步频）。真人行走时骨盆从不静止，
           // 这是"看起来像假人"的常见原因之一。
           // 段首尾都淡入淡出到 0：非 march 段（停顿/坐/躺）的髋部必须完全冻结，
@@ -1011,7 +1129,7 @@ export function generatePlannedTracks(
           keys.push({ time: round3(time), value: [
             marchAt ? marchAt.position.x : restPosition[0] + fromOffset[0] + (toOffset[0] - fromOffset[0]) * smooth,
             restPosition[1] + fromOffset[1] + (toOffset[1] - fromOffset[1]) * smooth + (template === 'march'
-            ? gaitCycle((time - seg.t0) / gaitPeriod({ legLength: legChain ? legChain.upper + legChain.lower : undefined }) - phase).hipLift - GAIT_HIP_BASE
+            ? gaitCycle((time - seg.t0) / (gaitPeriod({ legLength: legChain ? legChain.upper + legChain.lower : undefined }) * Math.max(curveSpeedFactor(curvatureAtTime.get(round3(time)) ?? 0), 0.05)) - phase).hipLift - GAIT_HIP_BASE
             : 0),
             // 走路沿路径（可弯）；其余模板保持原来的直线 +Z 推进
             marchAt ? marchAt.position.z : restPosition[2] + fromOffset[2] + (toOffset[2] - fromOffset[2]) * smooth + walkedZ + distance * progress,
@@ -1023,6 +1141,8 @@ export function generatePlannedTracks(
           if (marchAt) {
             // 存**角度**：与 schedule 的欧拉角同量纲，避免弧度/度混算
             marchYaw.push({ time: round3(time), value: (marchAt.heading * 180) / Math.PI, interp: 'linear' });
+            curvatureAtTime.set(round3(time), pathCurvature(marchRoute, marchAt.arcLength));
+            recordTorsoLead(marchRoute, marchAt.arcLength, round3(time), torsoYawKeys, headYawKeys);
           }
         }
         if (keys[keys.length - 1].time < seg.t1 - TIME_EPS) {
@@ -1060,19 +1180,14 @@ export function generatePlannedTracks(
      * 所以确实「不需要」——但那正是走不出弧线的根因。
      */
     if (marchYawKeys.length > 0 && boneName === bones.hips) {
-      ks = ks.map((k) => {
-        const yawDeg = sampleYawAt(marchYawKeys, k.time);
-        if (yawDeg === null) return k;
-        // 在欧拉空间叠加 Y 分量（约定与 line 82 的 XYZ 序一致），
-        // 再转回四元数 —— 偏航是绕世界竖轴的整体转向，
-        // 放在欧拉 Y 上比在四元数里左乘更可预测。
-        const e = new THREE.Euler().setFromQuaternion(
-          new THREE.Quaternion(k.value[0], k.value[1], k.value[2], k.value[3]), 'XYZ',
-        );
-        e.y += yawDeg * D2R; // sampleYawAt 已返回度 → 换算成弧度给欧拉角
-        const q = new THREE.Quaternion().setFromEuler(e);
-        return { ...k, value: [q.x, q.y, q.z, q.w] as QuatTuple };
-      });
+      ks = addYawToTrack(ks, marchYawKeys);
+    }
+    // 躯干/视线用超前朝向（比根节点早转）
+    if (torsoYawKeys.length > 0 && (boneName === bones.spine || boneName === bones.chest)) {
+      ks = addYawToTrack(ks, torsoYawKeys);
+    }
+    if (headYawKeys.length > 0 && boneName === bones.head) {
+      ks = addYawToTrack(ks, headYawKeys);
     }
     ks.sort((a, b) => a.time - b.time);
     const merged: Keyframe<QuatTuple>[] = [];

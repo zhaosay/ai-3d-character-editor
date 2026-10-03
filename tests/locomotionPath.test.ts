@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MIN_CURVE_SPEED_RATIO,
   arcLengthForProgress,
+  curveSpeedFactor,
+  pathCurvature,
+  TORSO_LEAD_METRES,
+  torsoLeadHeading,
   arcLengths,
   bowedRoute,
   headingAtArcLength,
@@ -81,6 +86,73 @@ describe('按弧长采样', () => {
       // 走过的弧长必须严格等于 p × 总长
       expect(got.arcLength).toBeCloseTo(p * 10, 6);
     }
+  });
+});
+
+describe('pathCurvature / curveSpeedFactor：弯道减速', () => {
+  it('直线曲率为 0、速度系数为 1', () => {
+    const line: Vec3Tuple[] = [[0, 0, 0], [0, 0, 2], [0, 0, 4]];
+    expect(pathCurvature(line, 2)).toBe(0);
+    expect(curveSpeedFactor(0)).toBe(1);
+  });
+
+  it('缓弧轻微减速，尖角大幅减速', () => {
+    const gentle: Vec3Tuple[] = [[0, 0, 0], [0.4, 0, 2], [0, 0, 4]];
+    const sharp: Vec3Tuple[] = [[0, 0, 0], [0.2, 0, 0.2], [0.4, 0, 0.2]];
+    const gk = pathCurvature(gentle, 2.02);
+    const sk = pathCurvature(sharp, 0.2);
+    expect(sk).toBeGreaterThan(gk * 10);
+    expect(curveSpeedFactor(gk)).toBeGreaterThan(0.9);
+    expect(curveSpeedFactor(sk)).toBeLessThan(0.6);
+  });
+
+  it('pathCurvature 与 maxPathCurvature 在拐点处一致', () => {
+    // 回归：曾用 `i0 = idx-1 / i1 = idx+1` 再判 `i0===i1` 提前返回 0，
+    // 三点路径的拐点恰好命中该守卫 → 缓弧与尖角一律返回 0，减速完全失效。
+    const sharp: Vec3Tuple[] = [[0, 0, 0], [0.2, 0, 0.2], [0.4, 0, 0.2]];
+    expect(pathCurvature(sharp, 0.2)).toBeCloseTo(maxPathCurvature(sharp), 6);
+  });
+
+  it('速度系数单调递减且有下限，不会变成 0 或负数', () => {
+    const ks = [0, 0.5, 1, 1.5, 2, 3, 5, 10];
+    const factors = ks.map(curveSpeedFactor);
+    for (let i = 1; i < factors.length; i++) {
+      expect(factors[i]).toBeLessThanOrEqual(factors[i - 1] + 1e-9);
+    }
+    expect(Math.min(...factors)).toBeGreaterThanOrEqual(MIN_CURVE_SPEED_RATIO - 1e-9);
+  });
+
+  it('退化输入不崩', () => {
+    expect(pathCurvature([], 0)).toBe(0);
+    expect(pathCurvature([[0, 0, 0]], 0)).toBe(0);
+    expect(pathCurvature([[0, 0, 0], [0, 0, 0]], 0)).toBe(0);
+    expect(curveSpeedFactor(Number.NaN)).toBe(1);
+  });
+});
+
+describe('torsoLeadHeading：躯干/视线先行于脚步', () => {
+  const corner: Vec3Tuple[] = [[0, 0, 0], [0, 0, 2], [2, 0, 2]];
+  const h = (s: number) => headingAtArcLength(corner, s);
+
+  it('lead=0 时与根节点朝向一致', () => {
+    expect(torsoLeadHeading(h, 1.9, 0)).toBeCloseTo(h(1.9), 9);
+  });
+
+  it('入弯处躯干朝向领先于根节点（关键验收点）', () => {
+    // 刚过拐点（弧长 2.05）时根节点还没转过来，躯干应已朝新方向
+    const root = h(2.05);
+    const torso = torsoLeadHeading(h, 2.05, TORSO_LEAD_METRES);
+    expect(torso).toBeGreaterThan(root + 0.05);
+  });
+
+  it('路径起点之前也超前（入弯第一步就有预置，不被钳成 0）', () => {
+    expect(torsoLeadHeading(h, 0, TORSO_LEAD_METRES)).toBeCloseTo(h(0), 9);
+  });
+
+  it('直线段上超前无影响（前后朝向一致）', () => {
+    const line: Vec3Tuple[] = [[0, 0, 0], [0, 0, 4]];
+    const hl = (s: number) => headingAtArcLength(line, s);
+    expect(torsoLeadHeading(hl, 2, TORSO_LEAD_METRES)).toBeCloseTo(hl(2), 9);
   });
 });
 

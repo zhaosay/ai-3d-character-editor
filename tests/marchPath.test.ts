@@ -128,6 +128,74 @@ describe('bowFromClause：只在明确表达绕行意图时才加弧', () => {
   });
 });
 
+describe('躯干/视线先行于脚步', () => {
+  const yawDeg = (q: readonly number[]) => {
+    const x = q[0], y = q[1], z = q[2], w = q[3];
+    return Math.asin(Math.max(-1, Math.min(1, 2 * (w * y - x * z)))) * 180 / Math.PI;
+  };
+  const build = (viaPoints?: Vec3Tuple[]) => generatePlannedTracks(
+    BONES,
+    [{ t0: 0, t1: 4, template: 'march', clause: '', ...(viaPoints ? { viaPoints } : {}) } as PlanSegment],
+    4, 0, {}, REST_POSITIONS,
+  );
+
+  it('胸部朝向与髋部朝向不同（躯干不是跟着根节点整体转）', () => {
+    const r = build([[0.7, 1, 1.2], [1.4, 1, 0.4]]);
+    const anim = { id: 'x', name: 'x', duration: 4, fps: 30, tracks: r.tracks };
+    let maxDiff = 0;
+    for (let i = 0; i <= 80; i++) {
+      const pose = sampleAnimation(anim, (4 * i) / 80);
+      const h = yawDeg(pose.get('Hips')!.quaternion!);
+      const c = yawDeg(pose.get('Chest')!.quaternion!);
+      maxDiff = Math.max(maxDiff, Math.abs(c - h));
+    }
+    expect(maxDiff).toBeGreaterThan(3);
+  });
+
+  it('直线走法下躯干与髋部基本一致（不无端拧身）', () => {
+    const r = build();
+    const anim = { id: 'x', name: 'x', duration: 4, fps: 30, tracks: r.tracks };
+    for (const t of [0.5, 1, 1.5, 2]) {
+      const pose = sampleAnimation(anim, t);
+      const h = yawDeg(pose.get('Hips')!.quaternion!);
+      const c = yawDeg(pose.get('Chest')!.quaternion!);
+      expect(Math.abs(c - h)).toBeLessThan(20); // 基线 12°（骨盆与胸廓反向扭转，真人走路本就有）
+    }
+  });
+});
+
+describe('弯道减速：步频随曲率下降', () => {
+  /** 数大腿角过零次数 ≈ 步态周期数。 */
+  const gaitCycles = (tracks: Parameters<typeof hipsOf>[0], bone = 'TL') => {
+    const anim = { id: 'x', name: 'x', duration: 4, fps: 120, tracks: tracks as never };
+    let crossings = 0;
+    let prev = 0;
+    for (let i = 0; i <= 480; i++) {
+      const pose = sampleAnimation(anim, (4 * i) / 480);
+      const q = pose.get(bone)?.quaternion;
+      if (!q) return -1;
+      // 用 X 分量的符号变化近似过零
+      const v = q[0];
+      if (i > 0 && Math.sign(v) !== Math.sign(prev)) crossings++;
+      prev = v;
+    }
+    return crossings;
+  };
+
+  it('尖锐路径上的步态周期数少于直线（弯道减速真的作用到步频）', () => {
+    const straight = generateProceduralTracks(BONES, { prompt: '向前走', duration: 4 }, {}, REST_POSITIONS);
+    const curved = generatePlannedTracks(
+      BONES,
+      [{ t0: 0, t1: 4, template: 'march', clause: '', viaPoints: [[0.15, 1, 0.15], [0.3, 1, 0.3], [0.45, 1, 0.15]] } as PlanSegment],
+      4, 0, {}, REST_POSITIONS,
+    );
+    const a = gaitCycles(straight.tracks);
+    const b = gaitCycles(curved.tracks);
+    expect(a).toBeGreaterThan(0);
+    expect(b).toBeLessThan(a);
+  });
+});
+
 describe('生成的弧线在真人可走范围内', () => {
   it('绕行用的弧度不会产生小于 0.5m 的转弯半径', () => {
     // 用与模板相同的 bow 值构弧，检查曲率
