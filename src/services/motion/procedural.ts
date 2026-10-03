@@ -10,6 +10,7 @@ import {
   anticipationEnvelope, breathSignal, gaitCycle, gaitLeg, gaitPeriod, proximalDelay, strideForLeg,
 } from '../../core/motion/gaits';
 import { DEFAULT_SWORD_STANCE, scaleStanceToLeg } from '../../core/weapon/grip';
+import { arcLengthForProgress, bowedRoute, samplePathAtArcLength } from '../../core/motion/path';
 
 export type BoneMap = Partial<Record<HumanoidSemantic, string>>;
 /** 静息四元数（语义→快照 restLocal），模板偏移量以此为基准合成，适配任意绑定姿势。 */
@@ -52,6 +53,16 @@ export interface PlanSegment {
   intensity?: number;
   speed?: number;
   targetPropId?: string;
+  /**
+   * 走路路径的弯曲度（弦高比例）。0 = 直线。
+   * 不传则从 `clause` 推断（见 `bowFromClause`）。
+   */
+  bow?: number;
+  /**
+   * 显式途经点（父级局部坐标）。给了就走折线，`bow` 被忽略。
+   * 这样「直线走」与「走弧线/绕行」两种结构都支持，不需要拆成两个模板。
+   */
+  viaPoints?: Vec3Tuple[];
 }
 
 type EulerDeg = [number, number, number];
@@ -564,6 +575,63 @@ function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
 
+/**
+ * 构造一段走路的路径。
+ *
+ * ## 为什么需要
+ *
+ * 原实现是 `z += distance * progress` —— **x 恒定的纯直线**，
+ * 所以「走弧线」在通用行走里根本不存在（只有带道具交互的分支走折线，
+ * 但那条分支也只移动髋骨、不给朝向）。
+ *
+ * ## 行为
+ *
+ * - 两点（绝大多数情况）：用 `bowedRoute` 生成一条**缓弧**。
+ *   真人不会走完美直线，尤其转向时；轻微外弧比直线可信得多。
+ * - `bow = 0` 或弦长过短：退化为原来的直线（保持向后兼容）。
+ * - 弧长会因加弧而变长（约 +2.6% for bow=0.13），
+ *   故 `walkedZ` 仍按原 `distance` 记账，避免累积漂移。
+ *
+ * @param walkedZ 之前各段已走的 Z（保证多段接续不跳变）
+ */
+function buildMarchRoute(
+  from: Vec3Tuple,
+  to: Vec3Tuple,
+  bow: number,
+  viaPoints?: Vec3Tuple[],
+): Vec3Tuple[] {
+  // 显式途经点优先：这就是「走弧线」的结构化入口
+  if (viaPoints && viaPoints.length >= 2) return [[...from], ...viaPoints.map((p) => [...p] as Vec3Tuple), [...to]];
+  if (bow > 0) {
+    const route = bowedRoute(from, to, bow);
+    if (route.length >= 3) return route;
+  }
+  return [[...from], [...to]];
+}
+
+/** 走路段的朝向（绕 Y）关键帧；累加后写入髋骨旋转轨道。 */
+type YawKey = Keyframe<number>;
+
+/**
+ * 从动作描述推断走路的弯曲度。
+ *
+ * ## 为什么不给固定默认值
+ *
+ * 「从 A 走到 B」在物理上就该是直线 —— 强行加弧是编造动作。
+ * 真人走弧线几乎总是因为**有东西要绕**或**中途转向**，
+ * 所以只在描述明确表达这些意图时才加弧。
+ *
+ * 识别：
+ * - 绕开 / 绕过 / 避开 → 0.18（明显绕行）
+ * - 弧线 / 拐弯 / 弯曲 / 绕一下 → 0.12（轻微弧）
+ * - 其余 → 0（直线）
+ */
+export function bowFromClause(clause: string): number {
+  if (/绕开|绕过|避开|绕过障碍/.test(clause)) return 0.18;
+  if (/弧线|拐弯|弯曲|绕一下|转弯|拐个/.test(clause)) return 0.12;
+  return 0;
+}
+
 function samplePolyline(points: Vec3Tuple[], progress: number): Vec3Tuple {
   if (points.length < 2) return [...(points[0] ?? [0, 0, 0])];
   const lengths = points.slice(1).map((point, index) => new THREE.Vector3(...point).distanceTo(new THREE.Vector3(...points[index])));
@@ -604,6 +672,10 @@ export function generatePlannedTracks(
   const perBone = new Map<string, Keyframe<QuatTuple>[]>();
   const perBonePosition = new Map<string, Keyframe<Vec3Tuple>[]>();
   let walkedZ = 0;
+  /** 当前段的朝向关键帧（**角度**）。每段开始时清空。 */
+  let marchYaw: YawKey[] = [];
+  /** 全程累积的朝向关键帧（角度），在轨道成型后叠加到髋骨。 */
+  const marchYawKeys: YawKey[] = [];
   let rootOffset: Vec3Tuple = [0, 0, 0];
   let interactionPosition: Vec3Tuple | null = restPositions.hips ? [...restPositions.hips] : null;
   // Every participating bone has keys in every segment, preventing interpolation
@@ -615,6 +687,9 @@ export function generatePlannedTracks(
       ?? (seg.targetPropId ? worldInteractions[seg.targetPropId] : undefined)
       ?? bedInteraction;
     const template = isKnownTemplate(seg.template) ? seg.template : 'sway';
+    marchYaw = [];
+    /** 走路的弯曲度：显式 bow 优先，否则从描述推断（「从A走到B」保持直线）。 */
+    const bow = seg.bow ?? (template === 'march' ? bowFromClause(seg.clause) : 0);
     if (template !== seg.template) warnings.push(`未知模板 ${seg.template}，已按 sway 处理`);
     templates.push(template);
     if (template === 'sway' && seg.clause.trim()) {
@@ -883,6 +958,30 @@ export function generatePlannedTracks(
                 : template === 'orient' && /翻身|侧卧|侧身/.test(seg.clause) ? groundedHipOffset
                   : template === 'stand' ? [0, 0, 0] as Vec3Tuple : rootOffset;
         const keys: Keyframe<Vec3Tuple>[] = [];
+        /**
+         * 走路路径：之前恒为 `restPosition[2] + walkedZ + distance * progress`
+         * —— z 方向纯直线，x 恒定，走不出弧线。
+         * 现在走 `marchRoute`：两点时生成一条缓弧（bowedRoute），
+         * 三个及以上点时直接当折线走（调用方可传 waypoints）。
+         * 位置与朝向都按**弧长**采样，折线各段不等长时才不会速度脉动。
+         */
+        const marchRoute: Vec3Tuple[] = template === 'march'
+          ? buildMarchRoute(
+              // 端点用**绝对**坐标：必须含已累积的 walkedZ 与本段 distance，
+              // 否则 bow=0 时会丢掉前进量（实测 z 恒为 0，角色原地踏步）。
+              [
+                restPosition[0] + fromOffset[0],
+                restPosition[1],
+                restPosition[2] + fromOffset[2] + walkedZ,
+              ],
+              [
+                restPosition[0] + toOffset[0],
+                restPosition[1],
+                restPosition[2] + toOffset[2] + walkedZ + distance,
+              ],
+              bow, seg.viaPoints,
+            )
+          : [];
         for (let i = 0; i < n; i++) {
           const time = Math.min(seg.t0 + i * step, seg.t1);
           const progress = (time - seg.t0) / span;
@@ -899,22 +998,32 @@ export function generatePlannedTracks(
               : Math.min(1, progress / 0.9))
             : progress;
           const smooth = rootProgress * rootProgress * (3 - 2 * rootProgress);
+          const marchAt = template === 'march'
+            ? samplePathAtArcLength(marchRoute, arcLengthForProgress(marchRoute, smooth))
+            : null;
           // 步态带来的髋部垂直起伏（2× 步频）。真人行走时骨盆从不静止，
           // 这是"看起来像假人"的常见原因之一。
           // 段首尾都淡入淡出到 0：非 march 段（停顿/坐/躺）的髋部必须完全冻结，
           // 且相邻段之间不能因 bob 产生跳变。
           // 呼吸同样不作用于根节点，只体现在胸/肩/头旋转（见 breath 模板）。
-          // 步态带来的髋部垂直起伏（2× 步频）。真人行走时骨盆从不静止，
-          // 这是"看起来像假人"的常见原因之一。
           // 减去双支撑相的常量基准，使走路段首尾都归零 —— 这样与后续
           // 「停顿/坐/躺」段（bob=0）天然连续，不会产生段边界跳变。
           keys.push({ time: round3(time), value: [
-            restPosition[0] + fromOffset[0] + (toOffset[0] - fromOffset[0]) * smooth,
+            marchAt ? marchAt.position.x : restPosition[0] + fromOffset[0] + (toOffset[0] - fromOffset[0]) * smooth,
             restPosition[1] + fromOffset[1] + (toOffset[1] - fromOffset[1]) * smooth + (template === 'march'
             ? gaitCycle((time - seg.t0) / gaitPeriod({ legLength: legChain ? legChain.upper + legChain.lower : undefined }) - phase).hipLift - GAIT_HIP_BASE
             : 0),
-            restPosition[2] + fromOffset[2] + (toOffset[2] - fromOffset[2]) * smooth + walkedZ + distance * progress,
+            // 走路沿路径（可弯）；其余模板保持原来的直线 +Z 推进
+            marchAt ? marchAt.position.z : restPosition[2] + fromOffset[2] + (toOffset[2] - fromOffset[2]) * smooth + walkedZ + distance * progress,
           ], interp: 'linear' });
+
+          // 朝向：路径切线的偏航角。之前走路**完全不给朝向**，
+          // 所以即使位移走出弧线身体也不转 —— 这是「走弧线不像真人」的主因。
+          // 只改髋的 Y 旋转，位置键仍走上面的分支。
+          if (marchAt) {
+            // 存**角度**：与 schedule 的欧拉角同量纲，避免弧度/度混算
+            marchYaw.push({ time: round3(time), value: (marchAt.heading * 180) / Math.PI, interp: 'linear' });
+          }
         }
         if (keys[keys.length - 1].time < seg.t1 - TIME_EPS) {
           // 末帧 bob 已淡出为 0，保证与后续静止段连续
@@ -923,6 +1032,8 @@ export function generatePlannedTracks(
         const arr = perBonePosition.get(hipsName) ?? [];
         arr.push(...keys);
         perBonePosition.set(hipsName, arr);
+        // 累积本段朝向，供轨道成型后叠加到髋骨（见下方 tracks 循环）
+        marchYawKeys.push(...marchYaw);
         walkedZ += distance;
         rootOffset = toOffset;
       }
@@ -937,7 +1048,32 @@ export function generatePlannedTracks(
 
   const tracks: BoneTrack[] = [];
   for (const boneName of new Set([...perBone.keys(), ...perBonePosition.keys()])) {
-    const ks = perBone.get(boneName) ?? [];
+    let ks = perBone.get(boneName) ?? [];
+    /**
+     * 走路朝向：把路径切线的偏航角**叠加**到髋骨旋转上。
+     *
+     * 为什么放在这里而不是段循环里：段循环产出的 `marchYaw` 与髋部旋转轨道
+     * 时间网格不一定一致，逐段合并会对不上；这里在轨道成型后统一按时间叠加，
+     * 「已有偏航 + 路径偏航」语义明确。
+     *
+     * 为什么以前没有：走路位移恒为 `z += d`，方向不变，朝向恒为 0，
+     * 所以确实「不需要」——但那正是走不出弧线的根因。
+     */
+    if (marchYawKeys.length > 0 && boneName === bones.hips) {
+      ks = ks.map((k) => {
+        const yawDeg = sampleYawAt(marchYawKeys, k.time);
+        if (yawDeg === null) return k;
+        // 在欧拉空间叠加 Y 分量（约定与 line 82 的 XYZ 序一致），
+        // 再转回四元数 —— 偏航是绕世界竖轴的整体转向，
+        // 放在欧拉 Y 上比在四元数里左乘更可预测。
+        const e = new THREE.Euler().setFromQuaternion(
+          new THREE.Quaternion(k.value[0], k.value[1], k.value[2], k.value[3]), 'XYZ',
+        );
+        e.y += yawDeg * D2R; // sampleYawAt 已返回度 → 换算成弧度给欧拉角
+        const q = new THREE.Quaternion().setFromEuler(e);
+        return { ...k, value: [q.x, q.y, q.z, q.w] as QuatTuple };
+      });
+    }
     ks.sort((a, b) => a.time - b.time);
     const merged: Keyframe<QuatTuple>[] = [];
     for (const k of ks) {
@@ -978,6 +1114,28 @@ export function analyzePrevisTracks(templates: string[], tracks: BoneTrack[]): P
     warnings.push('躺倒动作缺少髋部旋转骨骼，无法形成仰卧姿势');
   }
   return { status: warnings.length > 0 ? 'warning' : 'ready', movementMeters, warnings };
+}
+
+/**
+ * 在时间 t 处线性采样朝向关键帧，**返回角度（度）**；超出范围返回 null。
+ * 单位与欧拉角一致（度），调用处直接加到 `euler.y` 上，不再乘 D2R ——
+ * 之前把弧度当度又乘一次，路径朝向被压成 1/57，实测三种走法max|yaw| 全是 6.00°
+ * （全是原有骨盆摆动，朝向根本没进去）。
+ */
+function sampleYawAt(keys: YawKey[], t: number): number | null {
+  if (keys.length === 0) return null;
+  const sorted = [...keys].sort((a, b) => a.time - b.time);
+  if (t < sorted[0].time - TIME_EPS || t > sorted.at(-1)!.time + TIME_EPS) return null;
+  for (let i = 1; i < sorted.length; i++) {
+    if (t <= sorted[i].time + TIME_EPS) {
+      const a = sorted[i - 1];
+      const b = sorted[i];
+      const span = b.time - a.time;
+      const r = span < 1e-9 ? 1 : (t - a.time) / span;
+      return a.value + (b.value - a.value) * r;
+    }
+  }
+  return sorted.at(-1)!.value;
 }
 
 function mergeKeyframes<T>(keys: Keyframe<T>[]): Keyframe<T>[] {
